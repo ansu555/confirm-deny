@@ -175,6 +175,24 @@ Add from this repo at path `skills/repro-playbook`.
 
 **Pin it to a commit SHA before demoing** so a mid-demo push cannot change agent behaviour.
 
+## 6b. Point this app at the server
+
+```sh
+cp .env.example .env
+```
+
+Every entry point reads `.env` on start. Anything already exported wins over the file, so
+inline overrides and CI are unaffected, and a missing `.env` is not an error.
+
+The first line `preflight` and `triage` print is the server and model they actually resolved:
+
+```
+  http://localhost:8790 · openrouter/glm-5-3-flash · 6 from .env
+```
+
+Read it. A `.env` left over from an earlier attempt is otherwise invisible until a run has
+already burned ten minutes on the wrong model.
+
 ## 7. Check the gate before trusting it
 
 ```sh
@@ -210,6 +228,8 @@ node packages/runner/src/cli.ts triage https://github.com/ansu555/colwrap/issues
 | Sandbox provisioning returns `500` | No default region set in the Daytona dashboard. |
 | Every run fails after several successes | Daytona 30 GiB disk cap from accumulated sandboxes. |
 | Connection hangs on the model gateway | Node resolving over IPv6. Prefix with `NODE_OPTIONS=--dns-result-order=ipv4first`. |
+| Runs behave as if `.env` were empty | Nothing loaded it before PR #13. Check the resolved line printed by `preflight`. |
+| `ECONNREFUSED` from `preflight`, server is up | `TRUEFORGE_BASE_URL` in `.env` pointing at an old port. The resolved line names it. |
 | A config value you set has no effect | See below. |
 
 ### Zod strips unknown keys silently
