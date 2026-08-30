@@ -174,44 +174,58 @@ first bad version.
 just its summary — so **do not go to step 8 without it.**
 
 `references/casefile.example.json` is the authority on the shape — **read it if
-any field below is unclear, and copy its key names exactly.** A key the schema
-does not know is rejected at the boundary and the whole run fails, so this is
-not a place to improvise names.
+any field below is unclear, and copy its key names exactly.**
 
-The skeleton, so the common case needs no second file read:
+Get the names right, because a wrong one fails twice over: an unknown key is
+**silently dropped**, and the required field it was meant to be is then missing,
+which *is* rejected. Writing `python` where the schema says `runtime` loses the
+value and fails the run, with nothing pointing at the typo.
+
+**Every value below is a placeholder.** Replace each one with what you actually
+observed in this run — never carry a sample value through. Reporting an
+environment you did not measure is fabricated evidence, which is the one thing
+this whole procedure exists to prevent.
 
 ```json
 {
-  "issue": { "url": "...", "number": 1, "repo": "owner/name", "title": "..." },
-  "verdict": "REPRODUCED",
+  "issue": { "url": "...", "number": 1, "repo": "owner/name" },
+  "verdict": "<one of REPRODUCED | CANNOT_REPRODUCE | NEEDS_INFO | DUPLICATE | NOT_A_BUG>",
   "evidence": {
     "environment": {
-      "os": "Linux 6.8.0 x86_64",
-      "runtime": "Python 3.12.4",
-      "packageVersions": { "colwrap": "2.4.0" }
+      "os": "<uname -srm output>",
+      "runtime": "<python3 --version output>",
+      "packageVersions": { "<package under test>": "<version you checked out>" }
     },
-    "reproScript": { "path": "/work/case/repro.py", "contents": "..." },
-    "command": "python /work/case/repro.py",
+    "reproScript": { "path": "/work/case/repro.py", "contents": "<the script you wrote>" },
+    "command": "<the command capture.sh ran>",
     "exitCode": 1,
-    "stdout": "...",
-    "stderr": "...",
+    "stdout": "<captured>",
+    "stderr": "<captured>",
     "durationMs": 0,
     "truncated": false
   },
   "analysis": {
-    "summary": "...",
-    "firstBadVersion": "v2.3.0",
-    "bisectTrail": [{ "version": "v2.2.0", "failed": false }],
+    "summary": "<what you observed, in a sentence>",
+    "firstBadVersion": "<from your bisect, or null>",
+    "bisectTrail": [{ "version": "<tag>", "failed": false }],
     "duplicateOf": [],
-    "unverifiedClaims": ["..."],
+    "unverifiedClaims": ["<everything you could not check>"],
     "openQuestion": null,
     "documentedBehaviourRef": null
   },
-  "draftReply": "...",
-  "labels": ["bug"],
+  "draftReply": "<the reply from step 8>",
+  "labels": [],
   "revisions": []
 }
 ```
+
+`exitCode` and `durationMs` are **integers, not strings** — copy the numbers
+capture.sh recorded, unquoted.
+
+The verdict and the exit code are coupled, and the schema enforces it:
+`REPRODUCED` needs a **non-zero** exit code, `CANNOT_REPRODUCE` needs a **zero**
+one. Copy the captured number, then pick the verdict it supports — never the
+other way round.
 
 `evidence` is `null` only for `NEEDS_INFO`. Every other field is required, and
 the verdict must be supported by the evidence — a `REPRODUCED` with exit code 0
