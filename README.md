@@ -274,6 +274,12 @@ cannot support is rejected, and the run fails loudly rather than publishing.
 > `REPRODUCED` with `exitCode: 0` is the archetypal hallucination — a confident claim with a
 > passing test behind it. It is structurally unpublishable here.
 
+**Validation runs before the gate opens, not after.** The case file is pulled out of the
+sandbox and checked while the turn is still paused — so an unsupported verdict aborts the run
+with nothing posted, rather than being noticed after the comment is already on the issue. A
+paused turn with no readable case file is refused outright: a human asked to approve a reply
+with no checkable evidence behind it is the rubber stamp this design exists to avoid.
+
 ---
 
 ## The informed gate
@@ -409,7 +415,9 @@ Standalone TrueForge logs `Local sandbox fallback is available` and will execute
 **on the host** if no sandbox provider is configured. The run looks entirely successful while
 doing the one thing this project promises never to do.
 
-Check that the sandbox id in the CLI output starts with `v1:daytona:`.
+**The runner now refuses to continue** unless the `sandbox.created` id carries a remote
+provider prefix (`v1:daytona:` by default, `CONFIRM_DENY_SANDBOX_PREFIX` to override). The
+check is one line, and it is the difference between a documented hazard and an enforced one.
 
 </details>
 
@@ -530,7 +538,11 @@ Standalone TrueForge logs `Local sandbox fallback is available` and executes cod
 host** when no sandbox provider is configured. A run would look completely successful while
 doing the one thing this project promises never to do.
 
-Check the sandbox id starts `v1:daytona:`.
+We wrote this down as a hazard and told the operator to check the sandbox id by eye. A code
+review pointed out the obvious: the README claimed the product *never* runs reporter code on
+the maintainer's machine, while the runner accepted any sandbox id it was handed. A documented
+hazard is not a control. It is now asserted in `runner.ts` and the run aborts on a
+non-remote sandbox.
 
 </details>
 
@@ -594,6 +606,14 @@ is a better argument for code review than any clean run.
   TrueForge's problem.
 - **Public repositories only**, permanently. The sandbox holds no credentials and there is no
   supported way to give it any.
+- **Open, and unresolved at the time of writing: the skill does not always reach the agent.**
+  `repro-playbook` is registered on the server and named in the agent spec, but in four
+  consecutive runs the session produced **no skill-load event at all**, and the agent
+  improvised a case file in a shape it invented — `reproduction.status: "confirmed"` where the
+  schema wants `verdict`. Validation rejected it and nothing was posted, which is the gate
+  behaving correctly, but the arc does not complete while this holds. It is recorded here
+  rather than hidden because a verified run earlier in the build *did* load the skill, so this
+  is a live intermittency we do not yet understand, not a known limitation.
 - Development probes (`verify-gate`, `pull-test`) were deleted rather than shipped as
   half-tests.
 

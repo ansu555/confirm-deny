@@ -4,8 +4,8 @@ import { stdin, stdout } from 'node:process';
 import { VERDICT_GLYPH } from '@confirm-deny/casefile';
 import { TriageRunner } from './runner.ts';
 import { CaseStore, newCase } from './store.ts';
-import { UngatedWritePathError } from './policy.ts';
-import { CaseFileInvalidError } from './artifacts.ts';
+import { UngatedWritePathError, HostExecutionError } from './policy.ts';
+import { CaseFileInvalidError, MissingCaseFileError } from './artifacts.ts';
 import type { PendingCall, PendingDecision } from './gate.ts';
 import type { TriageEvent } from './events.ts';
 
@@ -112,6 +112,28 @@ async function askOperator(calls: PendingCall[]): Promise<PendingDecision[]> {
   return decisions;
 }
 
+function rejectedValues(error: CaseFileInvalidError): [string, string][] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(error.raw);
+  } catch {
+    return [['(file)', error.raw.slice(0, 300)]];
+  }
+
+  const rows: [string, string][] = [];
+  for (const problem of error.problems) {
+    const path = problem.split(':')[0]?.trim();
+    if (!path || path === '(root)') continue;
+    let cursor: unknown = parsed;
+    for (const key of path.split('.')) {
+      if (cursor && typeof cursor === 'object') cursor = (cursor as Record<string, unknown>)[key];
+      else cursor = undefined;
+    }
+    rows.push([path, JSON.stringify(cursor) ?? 'undefined']);
+  }
+  return rows;
+}
+
 async function main(): Promise<void> {
   const [command, argument] = process.argv.slice(2);
 
@@ -129,6 +151,9 @@ async function main(): Promise<void> {
     token: process.env['TRUEFORGE_TOKEN'] ?? '',
     model: env('CONFIRM_DENY_MODEL', 'google-gemini/gemini-3-1-flash-lite'),
     githubServerName: process.env['GITHUB_MCP_SERVER'] ?? 'github',
+    ...(process.env['CONFIRM_DENY_SANDBOX_PREFIX']
+      ? { sandboxPrefix: process.env['CONFIRM_DENY_SANDBOX_PREFIX'] }
+      : {}),
   });
 
   if (command === 'preflight') {
@@ -176,7 +201,19 @@ main().catch((error: unknown) => {
   }
   if (error instanceof CaseFileInvalidError) {
     console.error(`\n${c.red(error.message)}`);
+    for (const [path, value] of rejectedValues(error)) {
+      console.error(c.mono(`  ${path} = ${value}`));
+    }
     console.error(c.dim('\nThe agent wrote a case file its own verdict could not support.'));
+    console.error(c.dim('Nothing was posted; the gate is not opened on an invalid case file.'));
+    process.exit(1);
+  }
+  if (error instanceof MissingCaseFileError) {
+    console.error(`\n${c.red(error.message)}`);
+    process.exit(1);
+  }
+  if (error instanceof HostExecutionError) {
+    console.error(`\n${c.red(error.message)}`);
     process.exit(1);
   }
   console.error(`\n${c.red(String((error as Error)?.stack ?? error))}`);
