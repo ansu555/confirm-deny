@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  HostExecutionError,
+  REMOTE_SANDBOX_PREFIX,
   UngatedWritePathError,
   assertGated,
+  assertRemoteSandbox,
   auditPolicy,
   isDestructive,
   isWrite,
@@ -95,5 +98,26 @@ describe('the policy audit catches the silent failures', () => {
     const report = auditPolicy(githubTools, ['@all'], ['add_issue_comment']);
     expect(report.ungatedWrites).toEqual([]);
     expect(report.gated).toHaveLength(githubTools.length);
+  });
+});
+
+describe('assertRemoteSandbox', () => {
+  it('accepts a Daytona sandbox id', () => {
+    expect(() => assertRemoteSandbox('v1:daytona:abc123', REMOTE_SANDBOX_PREFIX)).not.toThrow();
+  });
+
+  it('refuses the local host fallback', () => {
+    expect(() => assertRemoteSandbox('local', REMOTE_SANDBOX_PREFIX)).toThrow(HostExecutionError);
+  });
+
+  it('refuses an id that merely contains the prefix', () => {
+    expect(() => assertRemoteSandbox('local-v1:daytona:x', REMOTE_SANDBOX_PREFIX)).toThrow(
+      HostExecutionError,
+    );
+  });
+
+  it('honours a configured prefix for another provider', () => {
+    expect(() => assertRemoteSandbox('v2:modal:xyz', 'v2:modal:')).not.toThrow();
+    expect(() => assertRemoteSandbox('v1:daytona:xyz', 'v2:modal:')).toThrow(HostExecutionError);
   });
 });

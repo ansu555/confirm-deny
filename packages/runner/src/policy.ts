@@ -56,6 +56,29 @@ export function auditPolicy(
   };
 }
 
+export const REMOTE_SANDBOX_PREFIX = 'v1:daytona:';
+
+export class HostExecutionError extends Error {
+  readonly sandboxId: string;
+
+  constructor(sandboxId: string, expectedPrefix: string) {
+    super(
+      `Refusing to continue: sandbox "${sandboxId}" does not start with "${expectedPrefix}".\n` +
+        `TrueForge executes on the host when no sandbox provider is configured, which would ` +
+        `run the reporter's code on this machine. Configure a sandbox provider, or set ` +
+        `CONFIRM_DENY_SANDBOX_PREFIX if your provider issues ids in another form.`,
+    );
+    this.name = 'HostExecutionError';
+    this.sandboxId = sandboxId;
+  }
+}
+
+export function assertRemoteSandbox(sandboxId: string, expectedPrefix: string): void {
+  if (!sandboxId.startsWith(expectedPrefix)) {
+    throw new HostExecutionError(sandboxId, expectedPrefix);
+  }
+}
+
 export class UngatedWritePathError extends Error {
   readonly report: PolicyReport;
 

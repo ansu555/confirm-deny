@@ -10,12 +10,21 @@ import {
   type PendingCall,
   type PendingDecision,
 } from './gate.ts';
-import { auditPolicy, assertGated, type McpToolEntry, type PolicyReport } from './policy.ts';
+import {
+  auditPolicy,
+  assertGated,
+  assertRemoteSandbox,
+  REMOTE_SANDBOX_PREFIX,
+  type McpToolEntry,
+  type PolicyReport,
+} from './policy.ts';
 import {
   findCaseFilePath,
   parseSandboxArtifacts,
   validateCaseFile,
   CaseFileInvalidError,
+  MissingCaseFileError,
+  DEFAULT_CASE_FILE_PATH,
 } from './artifacts.ts';
 import type { TriageEvent, TriageEventSink } from './events.ts';
 
@@ -24,6 +33,7 @@ export interface RunnerOptions {
   baseUrl: string;
   model: string;
   githubServerName?: string;
+  sandboxPrefix?: string;
 }
 
 export interface TurnOutcome {
@@ -130,7 +140,9 @@ export class TriageRunner {
         }
 
         case 'sandbox.created': {
-          await emit({ type: 'sandbox.created', sandboxId: String(event['sandboxId']) });
+          const sandboxId = String(event['sandboxId']);
+          assertRemoteSandbox(sandboxId, this.options.sandboxPrefix ?? REMOTE_SANDBOX_PREFIX);
+          await emit({ type: 'sandbox.created', sandboxId });
           break;
         }
 
@@ -209,9 +221,13 @@ export class TriageRunner {
             });
           }
 
-          if (!paused && this.casefilePath) {
-            const path = this.casefilePath;
-            casefile = await this.pullCaseFile(sessionId, turnId, path);
+          const path = this.casefilePath ?? (paused ? DEFAULT_CASE_FILE_PATH : null);
+
+          if (path) {
+            casefile = await this.pullCaseFile(sessionId, turnId, path).catch((error: unknown) => {
+              if (error instanceof CaseFileInvalidError || !paused) throw error;
+              throw new MissingCaseFileError(turnId);
+            });
             await emit({ type: 'casefile.ready', casefile, path });
           }
 
