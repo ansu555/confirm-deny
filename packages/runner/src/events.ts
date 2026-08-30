@@ -12,6 +12,8 @@ export type TriageEvent =
   | { type: 'gate.opened'; turnId: string; calls: PendingCall[] }
   | { type: 'gate.resolved'; toolCallId: string; status: 'allow' | 'deny'; reason?: string }
   | { type: 'casefile.ready'; casefile: CaseFile; path: string }
+  | { type: 'casefile.rejected'; reason: string }
+  | { type: 'casefile.repair'; round: number; limit: number }
   | { type: 'artifact.available'; label: string; path: string }
   | { type: 'turn.finished'; turnId: string; paused: boolean }
   | { type: 'failed'; message: string; detail?: string };

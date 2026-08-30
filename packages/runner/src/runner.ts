@@ -40,7 +40,24 @@ export interface TurnOutcome {
   turnId: string;
   pending: PendingCall[];
   casefile: CaseFile | null;
+  casefileError: CaseFileRejection | null;
   finalText: string | null;
+}
+
+export type CaseFileRejection = CaseFileInvalidError | MissingCaseFileError;
+
+export function rejectionReason(error: CaseFileRejection): string {
+  if (error instanceof MissingCaseFileError) {
+    return (
+      `Your case file could not be read at ${DEFAULT_CASE_FILE_PATH}. Write it there, ` +
+      `announce it in a fenced sandbox_artifacts block, and call add_issue_comment again.`
+    );
+  }
+  return (
+    `Your case file was rejected by the schema, so no human has seen this reply yet. ` +
+    `Fix ${error.path} and call add_issue_comment again.\n` +
+    error.problems.map((p) => `- ${p}`).join('\n')
+  );
 }
 
 export class TriageRunner {
@@ -124,6 +141,7 @@ export class TriageRunner {
     let pending: PendingCall[] = [];
     let finalText: string | null = null;
     let casefile: CaseFile | null = null;
+    let casefileError: CaseFileRejection | null = null;
 
     for await (const raw of stream) {
       const event = raw as { type: string } & Record<string, unknown>;
@@ -224,11 +242,17 @@ export class TriageRunner {
           const path = this.casefilePath ?? (paused ? DEFAULT_CASE_FILE_PATH : null);
 
           if (path) {
-            casefile = await this.pullCaseFile(sessionId, turnId, path).catch((error: unknown) => {
-              if (error instanceof CaseFileInvalidError || !paused) throw error;
-              throw new MissingCaseFileError(turnId);
-            });
-            await emit({ type: 'casefile.ready', casefile, path });
+            try {
+              casefile = await this.pullCaseFile(sessionId, turnId, path);
+              await emit({ type: 'casefile.ready', casefile, path });
+            } catch (error) {
+              if (!paused) throw error;
+              casefileError =
+                error instanceof CaseFileInvalidError
+                  ? error
+                  : new MissingCaseFileError(turnId);
+              await emit({ type: 'casefile.rejected', reason: rejectionReason(casefileError) });
+            }
           }
 
           await emit({ type: 'turn.finished', turnId, paused });
@@ -237,7 +261,7 @@ export class TriageRunner {
       }
     }
 
-    return { turnId, pending, casefile, finalText };
+    return { turnId, pending, casefile, casefileError, finalText };
   }
 
   private async backfillIndex(sessionId: string, turnId: string): Promise<void> {
