@@ -13,6 +13,14 @@ import type { TrueForgeApi } from '@truefoundry/trueforge-sdk';
  * a safety property has stopped holding.
  */
 
+/**
+ * What `EventIndex.record` will take: a session event, or the envelope the
+ * events endpoint wraps one in.
+ */
+export type IndexableEvent =
+  | { type?: string; id?: string }
+  | { event?: { type?: string; id?: string } };
+
 /** Raised when a deny arrives without a reason. See `PendingDecision`. */
 export class DenyReasonRequiredError extends Error {
   readonly toolCallId: string;
@@ -76,9 +84,17 @@ export type PendingDecision =
 export class EventIndex {
   private readonly messages = new Map<string, TrueForgeApi.ModelMessageEvent>();
 
-  record(event: { type: string; id?: string }): void {
-    if (event.type === 'model.message' && event.id) {
-      this.messages.set(event.id, event as TrueForgeApi.ModelMessageEvent);
+  /**
+   * Accepts either a bare event or the `{ turn_id, event }` envelope the
+   * events endpoint returns. The live stream yields the former and the
+   * durable listing the latter; unwrapping here keeps every caller from
+   * having to know which one it holds.
+   */
+  record(event: IndexableEvent): void {
+    const inner = 'event' in event && event.event ? event.event : event;
+    const { type, id } = inner as { type?: string; id?: string };
+    if (type === 'model.message' && id) {
+      this.messages.set(id, inner as TrueForgeApi.ModelMessageEvent);
     }
   }
 
@@ -100,6 +116,42 @@ function prettyArguments(raw: string): string {
   }
 }
 
+/**
+ * TrueForge dispatches MCP tools through a generic `call_tool` envelope:
+ *
+ *   { tool_name: "add_issue_comment", mcp_server: "github", input: { … } }
+ *
+ * The harness resolves the inner name for approval purposes — that is why
+ * `@write` pauses it at all — but the outer call still reads `call_tool` with
+ * no server. Presenting that to a human would show a meaningless tool name and
+ * bury the real payload one level down, so unwrap it for display.
+ *
+ * `argumentsJson` keeps the envelope exactly as it arrived; only the presented
+ * view is unwrapped. Verified live 2026-08-30 against `add_issue_comment`.
+ */
+function unwrapMcpEnvelope(
+  name: string,
+  raw: string,
+): { toolName: string; serverName: string | null; pretty: string } {
+  if (name !== 'call_tool') return { toolName: name, serverName: null, pretty: prettyArguments(raw) };
+  try {
+    const outer = JSON.parse(raw) as {
+      tool_name?: string;
+      mcp_server?: string;
+      input?: unknown;
+    };
+    if (!outer?.tool_name) throw new Error('not an envelope');
+    return {
+      toolName: outer.tool_name,
+      serverName: outer.mcp_server ?? null,
+      pretty: JSON.stringify(outer.input ?? {}, null, 2),
+    };
+  } catch {
+    // Unrecognised shape — show it as it came rather than inventing structure.
+    return { toolName: name, serverName: null, pretty: prettyArguments(raw) };
+  }
+}
+
 /** Resolve one `tool.approval_required` event into fully-described pending calls. */
 export function resolvePendingCalls(
   event: TrueForgeApi.ToolApprovalRequiredEvent,
@@ -111,13 +163,16 @@ export function resolvePendingCalls(
     if (!call) throw new UnresolvedToolCallError(ref.id, ref.sourceEventId);
 
     const raw = call.function.arguments ?? '';
+    const unwrapped = unwrapMcpEnvelope(call.function.name, raw);
     return {
       toolCallId: ref.id,
       threadId: event.threadId,
-      toolName: call.function.name,
-      serverName: call.toolInfo?.type === 'mcp' ? call.toolInfo.serverName : null,
+      toolName: unwrapped.toolName,
+      serverName:
+        unwrapped.serverName ??
+        (call.toolInfo?.type === 'mcp' ? call.toolInfo.serverName : null),
       argumentsJson: raw,
-      argumentsPretty: prettyArguments(raw),
+      argumentsPretty: unwrapped.pretty,
     };
   });
 }

@@ -120,7 +120,10 @@ export function triageMessage(issueUrl: string): TrueForgeApi.UserMessage {
     type: 'user.message',
     content:
       `Triage this bug report: ${issueUrl}\n\n` +
+      // Not "do not post anything" — that phrasing stopped the agent before it
+      // called the tool, and the gate only exists once the call is made.
       `Read the issue and its comments, reproduce it in the sandbox if you can, ` +
-      `write the case file, and draft a reply. Do not post anything.`,
+      `write the case file, then call add_issue_comment with your reply. ` +
+      `A human approves it before it goes anywhere.`,
   };
 }

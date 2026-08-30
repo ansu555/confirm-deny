@@ -3,6 +3,7 @@ import type { CaseFile } from '@confirm-deny/casefile';
 import { buildAgentSpec, triageMessage, CRITICAL_WRITE_TOOLS, APPROVAL_POLICY } from './agent-spec.ts';
 import {
   EventIndex,
+  UnresolvedToolCallError,
   buildApprovalResume,
   pausedApprovals,
   resolvePendingCalls,
@@ -148,9 +149,16 @@ export class TriageRunner {
       const event = raw as { type: string } & Record<string, unknown>;
       this.index.record(event as never);
 
+      // Every event carries the turn it belongs to. Prefer that over the
+      // event's own `id`: on `turn.created` those are two different things —
+      // the turn is `…st5se.local`, the event is a plain ULID — and passing an
+      // event id to a turn-scoped endpoint 404s.
+      const carried = event['turnId'] ?? event['turn_id'];
+      if (typeof carried === 'string' && carried) turnId = carried;
+
       switch (event.type) {
         case 'turn.created': {
-          turnId = String(event['id'] ?? turnId);
+          if (!turnId) turnId = String(event['id'] ?? '');
           await emit({ type: 'turn.started', turnId });
           break;
         }
@@ -207,7 +215,20 @@ export class TriageRunner {
         case 'tool.approval_required': {
           // Resolve now, while the stream that produced the source message is
           // still being read — the operator must see the real arguments.
-          pending = resolvePendingCalls(event as never, this.index);
+          //
+          // The stream does not always carry the `model.message` the approval
+          // points at: observed live on 2026-08-30, where `sourceEventId`
+          // named a message that never appeared as a stream event. Backfill
+          // the index from the turn's persisted events and retry once. Still
+          // no match ⇒ the error stands, because presenting an approval whose
+          // arguments we cannot quote verbatim is worse than failing.
+          try {
+            pending = resolvePendingCalls(event as never, this.index);
+          } catch (error) {
+            if (!(error instanceof UnresolvedToolCallError)) throw error;
+            await this.backfillIndex(sessionId, turnId);
+            pending = resolvePendingCalls(event as never, this.index);
+          }
           await emit({ type: 'gate.opened', turnId, calls: pending });
           break;
         }
@@ -232,6 +253,45 @@ export class TriageRunner {
     }
 
     return { turnId, pending, casefile, finalText: casefilePath ? finalText : finalText };
+  }
+
+  /**
+   * Replay the turn's persisted events into the index.
+   *
+   * The live stream is the fast path but not an authoritative record: an
+   * approval can name a `model.message` that never arrived as a stream event.
+   * The events endpoint is the durable one, so it is what we fall back to when
+   * a tool call will not resolve.
+   */
+  private async backfillIndex(sessionId: string, turnId: string): Promise<void> {
+    for (const id of await this.turnCandidates(sessionId, turnId)) {
+      try {
+        const page = await this.client.sessions.listTurnEvents(sessionId, id);
+        for await (const event of page) this.index.record(event as never);
+        return;
+      } catch {
+        // Wrong id for this endpoint; try the next candidate.
+      }
+    }
+  }
+
+  /**
+   * Turn ids to try, best first. The id carried on the stream is not always
+   * the one the turn-scoped endpoints accept, so the session's own turn list
+   * is the authority when it is not.
+   */
+  private async turnCandidates(sessionId: string, turnId: string): Promise<string[]> {
+    const candidates = turnId ? [turnId] : [];
+    try {
+      const turns = await this.client.sessions.listTurns(sessionId);
+      for await (const turn of turns) {
+        const id = (turn as { id?: string }).id;
+        if (id && !candidates.includes(id)) candidates.push(id);
+      }
+    } catch {
+      // Listing is a convenience here; the passed id may still work.
+    }
+    return candidates;
   }
 
   /** Pull an artifact out of the sandbox and validate it at the boundary. */
