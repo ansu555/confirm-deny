@@ -33,6 +33,26 @@ having found the bug unaided:
 > checking if a word fits on the current line.
 
 It was told the symptom. It found the operator.
+The full reply is [posted on the issue](https://github.com/ansu555/colwrap/issues/1#issuecomment-5468809989),
+approved by a human at the gate.
+
+The case file behind that reply, pulled from the sandbox and validated:
+
+```
+verdict    : REPRODUCED
+confidence : low (derived)
+exitCode   : 1
+firstBad   : v2.3.0
+bisect     : v2.0.0 ✓  v2.1.0 ✓  v2.2.0 ✓  v2.3.0 ✗  v2.4.0 ✗
+```
+
+**`confidence` is the interesting field.** It came out `low` on a run that got
+everything right, because the agent listed five things it could not verify —
+the reporter's Python 3.11 (the sandbox had 3.13.15), their exact width-72 text
+(never shared), the fix against `indent` / `break_long_words` /
+`wrap_paragraphs`. Confidence is derived from the evidence on our side, never
+reported by the model, so honesty costs the agent its score and it has no way to
+inflate it. That is the design working, not a weak result.
 
 ## The informed gate
 
@@ -66,7 +86,16 @@ node packages/runner/src/cli.ts preflight
 
 # 4. triage a real issue
 node packages/runner/src/cli.ts triage https://github.com/ansu555/colwrap/issues/1
+
+# optional: publish the same agent so it runs from the TrueForge chat UI
+node packages/runner/src/register-agent.ts
 ```
+
+Set `CONFIRM_DENY_MODEL` to a model your instance exposes, exactly as
+`GET /api/v1/models` names it — `openrouter/glm-5-3-flash`, say. Provider names
+replace dots with dashes, so `gemini-3.1-flash-lite` is registered as
+`gemini-3-1-flash-lite`. `TRUEFORGE_TOKEN` is empty in local mode, which
+disables auth.
 
 `preflight` refuses to start if any write path on your server would run
 ungated:
@@ -89,7 +118,7 @@ tick a box.
 | **Tool approval** | the agent posts in the maintainer's name unreviewed |
 | **Skills** | the repro procedure is a wall of prompt, loaded always |
 | **MCP** | no issue to read and no reply to post |
-| **Sub-agents** | version bisect is serial |
+| **Sub-agents** | version bisect is serial instead of four tags at once |
 | **Context management** | a long issue thread plus sandbox output blows the window |
 
 The credential boundary is **architectural, not a policy we wrote**: the agent
@@ -148,16 +177,26 @@ nothing that matters here.
 
 ## Honest status
 
-- The **CLI is the product**; there is no custom web UI. A triage desk was
-  designed and cut against its own deadline — the stock TrueForge chat UI
-  already ships an approval bar with deny-and-reason, and a great agent in a
-  stock UI beats a mediocre agent in a custom one.
-- **Parallel bisect sub-agents were cut.** Bisect runs serially.
+- The **CLI is the product**; there is no bespoke web UI. A triage desk was
+  designed and cut against its own deadline. Instead,
+  `node packages/runner/src/register-agent.ts` publishes the same agent to your
+  TrueForge instance, so it runs from the stock chat UI — which already ships an
+  approval bar with deny-and-reason. A great agent in a stock UI beats a
+  mediocre agent in a custom one.
+- **Bisect runs in parallel sub-agents**, one working directory each under
+  `/work/bisect/<version>/`. This was planned as the first thing to cut; it
+  survived because the agent fans out on its own once `dynamicSubAgents` is
+  enabled, which is a fair illustration of what the harness is doing for us.
 - The store is a JSON file with an atomic write — a deliberate choice, not an
   oversight. TrueForge's session is the source of truth and anything lost is
   recoverable by re-reading it.
-- Free-tier Gemini quota, not model capability, was the binding constraint on
-  how many times this could be rehearsed.
+- **Model availability, not model capability, was the binding constraint.** The
+  free Gemini tier returned `429` after roughly one run; `openrouter/glm-5-3-flash`
+  is what the verified runs used. Notably, the OpenRouter SSE stream that had
+  been blamed for an earlier `Unexpected end of JSON input` parses cleanly here —
+  that was never TrueForge's problem.
+- `verify-gate` and `pull-test` style probes were used during development and
+  deleted rather than shipped as half-tests.
 
 ## Qodo Code Review Evidence
 
