@@ -2,12 +2,14 @@
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { VERDICT_GLYPH } from '@confirm-deny/casefile';
-import { TriageRunner } from './runner.ts';
+import { TriageRunner, rejectionReason } from './runner.ts';
 import { CaseStore, newCase } from './store.ts';
 import { UngatedWritePathError, HostExecutionError } from './policy.ts';
 import { CaseFileInvalidError, MissingCaseFileError } from './artifacts.ts';
 import type { PendingCall, PendingDecision } from './gate.ts';
 import type { TriageEvent } from './events.ts';
+
+const REPAIR_LIMIT = 2;
 
 const c = {
   dim: (s: string) => `\x1b[2m${s}\x1b[0m`,
@@ -53,6 +55,13 @@ function render(event: TriageEvent): void {
     case 'artifact.available':
       console.log(c.dim(`  artifact ${event.label} → ${event.path}`));
       break;
+    case 'casefile.rejected':
+      console.log(`\n${c.amber('⛔ case file rejected — the gate stays shut')}`);
+      for (const line of event.reason.split('\n')) console.log(c.amber(`   ${line}`));
+      break;
+    case 'casefile.repair':
+      console.log(c.dim(`   handing the schema errors back to the agent (${event.round}/${event.limit})`));
+      break;
     case 'casefile.ready': {
       const { casefile: cf } = event;
       console.log(
@@ -79,6 +88,30 @@ function operatorPrompt(): ReturnType<typeof createInterface> {
   return prompt;
 }
 
+class OperatorInputClosedError extends Error {
+  constructor() {
+    super(
+      'Standard input closed while the gate was waiting for a decision. Nothing was posted.\n' +
+        'The gate needs an interactive terminal: run confirm-deny directly rather than piping ' +
+        'answers in, since readline drops buffered lines between prompts.',
+    );
+    this.name = 'OperatorInputClosedError';
+  }
+}
+
+async function ask(rl: ReturnType<typeof createInterface>, question: string): Promise<string> {
+  let onClose: (() => void) | null = null;
+  const closed = new Promise<never>((_, reject) => {
+    onClose = () => reject(new OperatorInputClosedError());
+    rl.once('close', onClose);
+  });
+  try {
+    return await Promise.race([rl.question(question), closed]);
+  } finally {
+    if (onClose) rl.removeListener('close', onClose);
+  }
+}
+
 async function askOperator(calls: PendingCall[]): Promise<PendingDecision[]> {
   const rl = operatorPrompt();
   const decisions: PendingDecision[] = [];
@@ -91,7 +124,7 @@ async function askOperator(calls: PendingCall[]): Promise<PendingDecision[]> {
 
       let answer = '';
       while (!['a', 'd'].includes(answer)) {
-        answer = (await rl.question(`\n   [a]llow / [d]eny: `)).trim().toLowerCase().slice(0, 1);
+        answer = (await ask(rl, `\n   [a]llow / [d]eny: `)).trim().toLowerCase().slice(0, 1);
       }
 
       if (answer === 'a') {
@@ -102,7 +135,7 @@ async function askOperator(calls: PendingCall[]): Promise<PendingDecision[]> {
       let reason = '';
       while (!reason) {
         
-        reason = (await rl.question(`   reason (required): `)).trim();
+        reason = (await ask(rl, `   reason (required): `)).trim();
         if (!reason) console.log(c.dim('   A denial without a reason teaches the agent nothing.'));
       }
       decisions.push({ toolCallId: call.toolCallId, threadId: call.threadId, status: 'deny', reason });
@@ -177,12 +210,33 @@ async function main(): Promise<void> {
 
   let outcome = await runner.triage(sessionId, issueUrl, render);
 
- 
-  for (let round = 0; outcome.pending.length > 0 && round < 5; round++) {
+  let repairs = 0;
+  for (let round = 0; outcome.pending.length > 0 && round < 8; round++) {
     await store.patch(record.id, { status: 'awaiting_approval', turnId: outcome.turnId });
+
+    if (outcome.casefileError) {
+      if (repairs >= REPAIR_LIMIT) throw outcome.casefileError;
+      repairs += 1;
+      await render({ type: 'casefile.repair', round: repairs, limit: REPAIR_LIMIT });
+      const reason = rejectionReason(outcome.casefileError);
+      outcome = await runner.resolveGate(
+        sessionId,
+        outcome.pending.map((call) => ({
+          toolCallId: call.toolCallId,
+          threadId: call.threadId,
+          status: 'deny' as const,
+          reason,
+        })),
+        render,
+      );
+      continue;
+    }
+
     const decisions = await askOperator(outcome.pending);
     outcome = await runner.resolveGate(sessionId, decisions, render);
   }
+
+  if (outcome.casefileError) throw outcome.casefileError;
 
   await store.patch(record.id, {
     status: outcome.pending.length ? 'awaiting_approval' : 'done',
@@ -195,6 +249,10 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
+  if (error instanceof OperatorInputClosedError) {
+    console.error(`\n${c.red(error.message)}`);
+    process.exit(1);
+  }
   if (error instanceof UngatedWritePathError) {
     console.error(`\n${c.red(error.message)}`);
     process.exit(1);

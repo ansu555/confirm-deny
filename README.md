@@ -13,7 +13,7 @@ It turns an unverified issue into a **schema-validated case file** — or a defe
 <br/>
 
 [![CI](https://github.com/ansu555/confirm-deny/actions/workflows/ci.yml/badge.svg)](https://github.com/ansu555/confirm-deny/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-41%20passing-3fb950?style=flat-square)](#tests)
+[![Tests](https://img.shields.io/badge/tests-48%20passing-3fb950?style=flat-square)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522.14-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![Built on TrueForge](https://img.shields.io/badge/built%20on-TrueForge-6e56cf?style=flat-square)](https://github.com/truefoundry/trueforge)
@@ -275,10 +275,20 @@ cannot support is rejected, and the run fails loudly rather than publishing.
 > passing test behind it. It is structurally unpublishable here.
 
 **Validation runs before the gate opens, not after.** The case file is pulled out of the
-sandbox and checked while the turn is still paused — so an unsupported verdict aborts the run
-with nothing posted, rather than being noticed after the comment is already on the issue. A
-paused turn with no readable case file is refused outright: a human asked to approve a reply
-with no checkable evidence behind it is the rubber stamp this design exists to avoid.
+sandbox and checked while the turn is still paused — so an unsupported verdict never reaches a
+human, rather than being noticed after the comment is already on the issue. A paused turn with
+no readable case file is refused outright: a human asked to approve a reply with no checkable
+evidence behind it is the rubber stamp this design exists to avoid.
+
+**A rejected case file is handed back to the agent, not to you.** The schema's complaints are
+returned through the same deny-with-reason channel a human uses, so the agent sees exactly
+which field it got wrong and calls `add_issue_comment` again. Two repair rounds, then the run
+fails. The gate stays shut throughout — you are never asked to approve a draft the schema has
+already refused, and you are not asked to explain a mistake the schema can describe better.
+
+> This is the thesis in miniature. The contract is machine-checkable, so the correction is
+> automatic and the human is spent only on the judgement a machine cannot make: whether this
+> reply should go out under their name.
 
 ---
 
@@ -430,7 +440,9 @@ check is one line, and it is the difference between a documented hazard and an e
 | `cli.ts preflight` | Resolve the approval policy against the live MCP tool list. Non-zero exit if any write path is ungated. |
 | `cli.ts triage <url>` | Full arc: preflight → session → sandbox → repro → bisect → case file → gate. |
 | `register-agent.ts` | Publish the agent to TrueForge so the stock chat UI can run it. |
-| `pnpm test` | 41 tests. |
+| `scripts/e2e.ts` | Drive the full arc programmatically against a live stack, including a denial and a revision. |
+| `scripts/verdict-matrix.ts` | Triage all four seeded issues and check each verdict; posts nothing. |
+| `pnpm test` | 48 tests. |
 | `pnpm typecheck` | Project-wide `tsc -b`. |
 
 ---
@@ -477,7 +489,7 @@ Every feature is here because **removing it makes the job impossible** — not t
 ## Tests
 
 ```bash
-pnpm test        # 41 passing
+pnpm test        # 48 passing
 ```
 
 The one worth pointing at is the **gate regression test**: a fixture of a paused turn asserting
@@ -530,6 +542,30 @@ the live tool list instead of trusting the names in our own code.
 </details>
 
 <details>
+<summary><b>4 · A registered skill is not a delivered skill</b></summary>
+
+<br/>
+
+`repro-playbook` was registered on the server and named in the agent spec, and the agent
+ignored it — inventing a case file shaped `reproduction.status: "confirmed"` where the schema
+wants `verdict`. Four runs in a row.
+
+The cause is in TrueForge's source, not ours: **git-sourced skills are never preloaded.** Only
+the name, description, and path go into the system prompt, and the preamble *asks* the model to
+read `path/SKILL.md` itself. A model that skips that step has a procedure it has never seen —
+and nothing anywhere reports that it skipped it.
+
+Our instructions delegated to the skill without ever telling the agent to open it. They now
+make reading it the required first action, and carry the case file's top-level keys inline as a
+backstop. The next run read `SKILL.md`, used `capture.sh`, and produced a valid case file.
+
+The general lesson is the same one `preflight` exists for: **configuring a control is not the
+same as verifying it took effect.** We had already learned it once, for tool approval, and did
+not think to apply it to skills.
+
+</details>
+
+<details>
 <summary><b>3 · The local sandbox fallback would have faked a pass</b></summary>
 
 <br/>
@@ -551,7 +587,7 @@ non-remote sandbox.
 ## Qodo Code Review Evidence
 
 Every substantive change after the first live run went through a pull request. **All seven are
-merged, each green on CI** — typecheck plus the 41 tests.
+merged, each green on CI** — typecheck plus the test suite.
 
 | PR | Title | Review outcome |
 |:--|:--|:--|
@@ -606,16 +642,13 @@ is a better argument for code review than any clean run.
   TrueForge's problem.
 - **Public repositories only**, permanently. The sandbox holds no credentials and there is no
   supported way to give it any.
-- **Open, and unresolved at the time of writing: the skill does not always reach the agent.**
-  `repro-playbook` is registered on the server and named in the agent spec, but in four
-  consecutive runs the session produced **no skill-load event at all**, and the agent
-  improvised a case file in a shape it invented — `reproduction.status: "confirmed"` where the
-  schema wants `verdict`. Validation rejected it and nothing was posted, which is the gate
-  behaving correctly, but the arc does not complete while this holds. It is recorded here
-  rather than hidden because a verified run earlier in the build *did* load the skill, so this
-  is a live intermittency we do not yet understand, not a known limitation.
-- Development probes (`verify-gate`, `pull-test`) were deleted rather than shipped as
-  half-tests.
+- **Two live-stack drivers ship in `scripts/`.** `e2e.ts` walks the whole arc — preflight,
+  triage, gate, deny-with-reason, revise, allow — and asserts the second draft differs from the
+  first. `verdict-matrix.ts` triages all four seeded issues and checks each verdict against the
+  one the issue was written to produce, leaving every gate unresolved so nothing is posted.
+  Both need a running TrueForge with providers configured, so neither can run in CI; they are
+  how the claims in this README were checked. Earlier one-off probes (`verify-gate`,
+  `pull-test`) were deleted rather than shipped as half-tests.
 
 ---
 
