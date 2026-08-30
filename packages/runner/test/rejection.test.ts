@@ -38,7 +38,7 @@ describe('rejectionReason', () => {
 describe('approval after a rejected case file', () => {
   const runner = () =>
     new TriageRunner({ baseUrl: 'http://localhost:1', token: '', model: 'x/y' }) as unknown as {
-      rejection: CaseFileRejection | null;
+      stateFor(sessionId: string): { rejection: CaseFileRejection | null };
       resolveGate: TriageRunner['resolveGate'];
     };
 
@@ -49,7 +49,7 @@ describe('approval after a rejected case file', () => {
 
   it('refuses an allow while a rejection stands', async () => {
     const r = runner();
-    r.rejection = new MissingCaseFileError('turn_1');
+    r.stateFor('s1').rejection = new MissingCaseFileError('turn_1');
     await expect(r.resolveGate('s1', allow, () => {})).rejects.toBeInstanceOf(
       ApprovalOnRejectedCaseFileError,
     );
@@ -57,7 +57,7 @@ describe('approval after a rejected case file', () => {
 
   it('still lets a denial through, so the agent can be told what to fix', async () => {
     const r = runner();
-    r.rejection = new MissingCaseFileError('turn_1');
+    r.stateFor('s1').rejection = new MissingCaseFileError('turn_1');
     await expect(r.resolveGate('s1', deny, () => {})).rejects.not.toBeInstanceOf(
       ApprovalOnRejectedCaseFileError,
     );
@@ -68,5 +68,38 @@ describe('approval after a rejected case file', () => {
     const error = new ApprovalOnRejectedCaseFileError(rejection);
     expect(error.rejection).toBe(rejection);
     expect(error.message).toContain('verdict: bad');
+  });
+});
+
+describe('rejection state is per session', () => {
+  const runner = () =>
+    new TriageRunner({ baseUrl: 'http://localhost:1', token: '', model: 'x/y' }) as unknown as {
+      stateFor(sessionId: string): { casefilePath: string | null; rejection: CaseFileRejection | null };
+      resolveGate: TriageRunner['resolveGate'];
+    };
+
+  const allow = [{ toolCallId: 'call_1', threadId: 'main', status: 'allow' as const }];
+
+  it('does not block a clean session because another one was rejected', async () => {
+    const r = runner();
+    r.stateFor('session_a').rejection = new MissingCaseFileError('turn_1');
+    await expect(r.resolveGate('session_b', allow, () => {})).rejects.not.toBeInstanceOf(
+      ApprovalOnRejectedCaseFileError,
+    );
+  });
+
+  it('still blocks the session that was actually rejected', async () => {
+    const r = runner();
+    r.stateFor('session_a').rejection = new MissingCaseFileError('turn_1');
+    await expect(r.resolveGate('session_a', allow, () => {})).rejects.toBeInstanceOf(
+      ApprovalOnRejectedCaseFileError,
+    );
+  });
+
+  it('keeps sessions' + "'" + ' case-file paths apart', () => {
+    const r = runner();
+    r.stateFor('session_a').casefilePath = '/work/case/a.json';
+    expect(r.stateFor('session_b').casefilePath).toBeNull();
+    expect(r.stateFor('session_a').casefilePath).toBe('/work/case/a.json');
   });
 });

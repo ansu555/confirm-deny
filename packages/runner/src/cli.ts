@@ -204,54 +204,60 @@ async function main(): Promise<void> {
 
   const store = CaseStore.default();
   const record = await store.upsert({ ...newCase(issueUrl), status: 'running' });
+  const markFailed = async (): Promise<void> => {
+    await store.patch(record.id, { status: 'failed' });
+  };
 
-  const sessionId = await runner.startSession();
-  await store.patch(record.id, { sessionId });
+  try {
+    await runTriage();
+  } catch (error) {
+    await markFailed();
+    throw error;
+  }
 
-  let outcome = await runner.triage(sessionId, issueUrl, render);
+  async function runTriage(): Promise<void> {
+    const sessionId = await runner.startSession();
+    await store.patch(record.id, { sessionId });
 
-  let repairs = 0;
-  for (let round = 0; outcome.pending.length > 0 && round < 8; round++) {
-    await store.patch(record.id, { status: 'awaiting_approval', turnId: outcome.turnId });
+    let outcome = await runner.triage(sessionId, issueUrl, render);
 
-    if (outcome.casefileError) {
-      if (repairs >= REPAIR_LIMIT) {
-        await store.patch(record.id, { status: 'failed', turnId: outcome.turnId });
-        throw outcome.casefileError;
+    let repairs = 0;
+    for (let round = 0; outcome.pending.length > 0 && round < 8; round++) {
+      await store.patch(record.id, { status: 'awaiting_approval', turnId: outcome.turnId });
+
+      if (outcome.casefileError) {
+        if (repairs >= REPAIR_LIMIT) throw outcome.casefileError;
+        repairs += 1;
+        await render({ type: 'casefile.repair', round: repairs, limit: REPAIR_LIMIT });
+        const reason = rejectionReason(outcome.casefileError);
+        outcome = await runner.resolveGate(
+          sessionId,
+          outcome.pending.map((call) => ({
+            toolCallId: call.toolCallId,
+            threadId: call.threadId,
+            status: 'deny' as const,
+            reason,
+          })),
+          render,
+        );
+        continue;
       }
-      repairs += 1;
-      await render({ type: 'casefile.repair', round: repairs, limit: REPAIR_LIMIT });
-      const reason = rejectionReason(outcome.casefileError);
-      outcome = await runner.resolveGate(
-        sessionId,
-        outcome.pending.map((call) => ({
-          toolCallId: call.toolCallId,
-          threadId: call.threadId,
-          status: 'deny' as const,
-          reason,
-        })),
-        render,
-      );
-      continue;
+
+      const decisions = await askOperator(outcome.pending);
+      outcome = await runner.resolveGate(sessionId, decisions, render);
     }
 
-    const decisions = await askOperator(outcome.pending);
-    outcome = await runner.resolveGate(sessionId, decisions, render);
+    if (outcome.casefileError) throw outcome.casefileError;
+
+    await store.patch(record.id, {
+      status: outcome.pending.length ? 'awaiting_approval' : 'done',
+      turnId: outcome.turnId,
+      casefile: outcome.casefile,
+    });
+
+    console.log(outcome.casefile ? c.green('\n✓ case file validated and stored') : c.dim('\nno case file this run'));
+    prompt?.close();
   }
-
-  if (outcome.casefileError) {
-    await store.patch(record.id, { status: 'failed', turnId: outcome.turnId });
-    throw outcome.casefileError;
-  }
-
-  await store.patch(record.id, {
-    status: outcome.pending.length ? 'awaiting_approval' : 'done',
-    turnId: outcome.turnId,
-    casefile: outcome.casefile,
-  });
-
-  console.log(outcome.casefile ? c.green('\n✓ case file validated and stored') : c.dim('\nno case file this run'));
-  prompt?.close();
 }
 
 main().catch((error: unknown) => {
