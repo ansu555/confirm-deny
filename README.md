@@ -692,10 +692,12 @@ silently wrong on the branch nobody walks.
   2–3 minutes early in the build and 30–50 minutes by the end. The obvious suspect — the model
   provider rate-limiting us — is **wrong**: probed directly with a trivial request,
   `openrouter/glm-5-3-flash` answers in 5.8s and `openrouter/gpt-5-nano` in 1.6s. Whatever it
-  is lives in the long run itself, most likely context growth across 90+ events and four
-  subagents. It is named here as an open problem rather than explained with a cause nobody
-  measured — which is the mistake this project exists to prevent, and one we made before
-  catching it.
+  is lives in the long run itself. Two later runs came in at about ten minutes each — between
+  the two extremes, which narrows nothing. There is a candidate: the server log holds 47 Gemini
+  `429`s carrying a 56-second backoff, and a stale `.env` was selecting a Gemini model (see
+  PR #13). We do not know how the slow runs were launched, so that stays a hypothesis. It is
+  named here as an open problem rather than explained with a cause nobody measured — which is
+  the mistake this project exists to prevent, and one we made once already before catching it.
 - **Two of the four registered models are unusable.** Both Gemini 3.x models hit TrueForge's
   `thought_signature` bug and stop dead after one tool call (see [SETUP.md](SETUP.md)); a
   trivial probe errors in 0.6s. The verified runs are GLM's. Notably, the OpenRouter SSE stream
@@ -730,15 +732,26 @@ agreeing.
 |:--|:--|:--|:--|
 | [#1](https://github.com/ansu555/colwrap/issues/1) | `✓ REPRODUCED` | **verified** | real bug — found *and* bisected to `v2.3.0` |
 | [#2](https://github.com/ansu555/colwrap/issues/2) | `○ CANNOT_REPRODUCE` | **verified** | reporter was on a version predating the bug |
-| [#3](https://github.com/ansu555/colwrap/issues/3) | `? NEEDS_INFO` | not yet run | no version, no steps, no reproducible claim |
-| [#4](https://github.com/ansu555/colwrap/issues/4) | `— NOT_A_BUG` | not yet run | documented behaviour, working as specified |
+| [#3](https://github.com/ansu555/colwrap/issues/3) | `? NEEDS_INFO` | **run — no verdict** | no version, no steps, no reproducible claim |
+| [#4](https://github.com/ansu555/colwrap/issues/4) | `— NOT_A_BUG` | **run — wrong verdict** | documented behaviour, working as specified |
 
-**Two of the four are verified against a live run; two are not.** The issues were written to
-produce those verdicts, but writing an issue is not evidence about the agent, and this README
-does not get to claim otherwise. `node scripts/verdict-matrix.ts 3,4` runs them and posts
-nothing — it leaves every gate unresolved. The runs were started and abandoned because a long
-triage slowed to a crawl late in the day; the cause is recorded below and is **not** the model
-API, which answers in seconds when probed directly.
+**Two of the four hold. Two do not, and here is exactly how they failed.**
+
+`node scripts/verdict-matrix.ts 3,4` ran both on the evening of Aug 30. It posts nothing — every
+gate is left unresolved by design.
+
+- **#3 produced no case file.** The turn ended `cancelled` with no error, which in TrueForge means
+  the iteration limit or a `context_length` smaller than the model's real window. An issue with
+  nothing to reproduce should be the *cheapest* triage in the set; instead the agent spent the
+  whole budget looking for something that was never there. The stopping rule works for a
+  reproduction that fails. It does not yet work for a report with nothing in it.
+- **#4 returned `REPRODUCED` where `NOT_A_BUG` was expected**, with six unverified claims listed
+  and confidence derived as `low`. The gate held and nothing was published — but a wrong verdict
+  that stops at a human is still a wrong verdict.
+
+Both are honest failures of the *judgement*, not of the safety machinery: in each case the gate
+behaved exactly as designed. The four-verdict matrix is a claim this project has not earned, and
+the demo shows one issue end to end instead.
 
 Any public repository works. Nothing needs to be installed on the target.
 
