@@ -93,15 +93,20 @@ Write it to `/work/case/repro.py` (or `.js`, `.sh` — match the project).
 ### 4. Run it through `capture.sh`
 
 ```bash
-bash /opt/tfy/skills/repro-playbook/scripts/capture.sh /work/case/capture.json \
-  python3 /work/case/repro.py
+CAPTURE=$(ls /opt/tf/skills/repro-playbook/scripts/capture.sh \
+             /opt/tfy/skills/repro-playbook/scripts/capture.sh 2>/dev/null | head -1)
+bash "$CAPTURE" /work/case/capture.json python3 /work/case/repro.py
 ```
+
+Resolve the path rather than assuming it — the skills mount has been seen at
+both `/opt/tf` and `/opt/tfy`. If neither exists, `find / -name capture.sh
+-path '*repro-playbook*' 2>/dev/null | head -1`.
 
 Never eyeball success. `capture.sh` records exit code, stdout, stderr and
 duration into JSON, truncating each stream at 64000 bytes and setting
 `truncated` when it does. Read that file; it is your evidence.
 
-A command that needs longer than the sandbox's 60s exec timeout must be split
+A command that needs longer than the sandbox's exec timeout must be split
 into steps, not given a longer rope.
 
 ### 5. Decide the verdict
