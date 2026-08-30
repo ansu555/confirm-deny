@@ -79,6 +79,11 @@ was told the symptom. It found the operator:
 [**The full reply, live on the issue**](https://github.com/ansu555/colwrap/issues/1#issuecomment-5468809989)
 — approved by a human at the gate.
 
+The arc has since been driven end to end by `scripts/e2e.ts`: gate opens with a validated case
+file, the operator **denies with a reason**, the agent revises, a second gate opens with a
+second validated case file, the operator allows, and the revised comment posts. Both drafts
+were checked at the gate before anyone could approve them.
+
 The case file behind it, pulled out of the sandbox and validated:
 
 ```
@@ -667,13 +672,12 @@ silently wrong on the branch nobody walks.
   partway through. The verified runs are GLM's. Notably, the OpenRouter SSE stream once blamed
   for an `Unexpected end of JSON input` parses cleanly on v0.1.4 — that was never TrueForge's
   problem.
-- **One step is proven only in its parts.** After a denial the agent must append a
-  `revisions[]` entry with `deniedReason`, `revisedAt` and `previousDraft`. A live run got as
-  far as the revision and the schema rejected it, because the skill named two of the three
-  fields and the example shipped an empty array — now fixed in the skill, the example, the
-  instructions, and a CI test that parses the example. Every stage around it is verified live;
-  the corrected revision itself is covered by tests rather than by a completed run, because
-  the rate limits above outlasted the attempts. Said plainly rather than glossed.
+- **The revision path took three attempts to get right.** After a denial the agent must append
+  a `revisions[]` entry with `deniedReason`, `revisedAt` and `previousDraft`. A live run got as
+  far as the revision and the schema rejected it — the skill named two of the three fields, and
+  `casefile.example.json`, which the skill calls the authority on shape, shipped an empty
+  array. There was nothing to copy. Fixed in the skill, the example, the instructions, and a CI
+  test that parses the example; the next run revised cleanly and posted.
 - **Public repositories only**, permanently. The sandbox holds no credentials and there is no
   supported way to give it any.
 - **Two live-stack drivers ship in `scripts/`.** `e2e.ts` walks the whole arc — preflight,
