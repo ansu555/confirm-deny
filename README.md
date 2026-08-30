@@ -762,7 +762,7 @@ Any public repository works. Nothing needs to be installed on the target.
 
 ## License
 
-MIT
+[MIT](LICENSE).
 
 <br/>
 
