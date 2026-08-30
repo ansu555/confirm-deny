@@ -4,7 +4,7 @@ import {
   findCaseFilePath,
   parseSandboxArtifacts,
   validateCaseFile,
-} from '../src/artifacts.js';
+} from '../src/artifacts.ts';
 
 const announcement = [
   'Here is what I produced.',

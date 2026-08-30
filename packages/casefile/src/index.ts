@@ -1,2 +1,2 @@
-export * from './schema.js';
-export * from './verdict.js';
+export * from './schema.ts';
+export * from './verdict.ts';

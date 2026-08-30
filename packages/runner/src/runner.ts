@@ -1,6 +1,6 @@
 import { TrueForge } from '@truefoundry/trueforge-sdk';
 import type { CaseFile } from '@confirm-deny/casefile';
-import { buildAgentSpec, triageMessage, CRITICAL_WRITE_TOOLS, APPROVAL_POLICY } from './agent-spec.js';
+import { buildAgentSpec, triageMessage, CRITICAL_WRITE_TOOLS, APPROVAL_POLICY } from './agent-spec.ts';
 import {
   EventIndex,
   buildApprovalResume,
@@ -8,10 +8,10 @@ import {
   resolvePendingCalls,
   type PendingCall,
   type PendingDecision,
-} from './gate.js';
-import { auditPolicy, assertGated, type McpToolEntry, type PolicyReport } from './policy.js';
-import { findCaseFilePath, parseSandboxArtifacts, validateCaseFile } from './artifacts.js';
-import type { TriageEvent, TriageEventSink } from './events.js';
+} from './gate.ts';
+import { auditPolicy, assertGated, type McpToolEntry, type PolicyReport } from './policy.ts';
+import { findCaseFilePath, parseSandboxArtifacts, validateCaseFile } from './artifacts.ts';
+import type { TriageEvent, TriageEventSink } from './events.ts';
 
 /**
  * Session lifecycle and stream fan-out.

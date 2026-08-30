@@ -6,7 +6,7 @@ import {
   buildApprovalResume,
   pausedApprovals,
   resolvePendingCalls,
-} from '../src/gate.js';
+} from '../src/gate.ts';
 import {
   COMMENT_ARGUMENTS,
   SECOND_TOOL_CALL_ID,
@@ -16,7 +16,7 @@ import {
   completedState,
   modelMessage,
   pausedState,
-} from './fixtures/paused-turn.js';
+} from './fixtures/paused-turn.ts';
 
 /**
  * T2 — the gate regression test.

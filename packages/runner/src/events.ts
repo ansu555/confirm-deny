@@ -1,5 +1,5 @@
 import type { CaseFile } from '@confirm-deny/casefile';
-import type { PendingCall } from './gate.js';
+import type { PendingCall } from './gate.ts';
 
 /**
  * What the runner emits.

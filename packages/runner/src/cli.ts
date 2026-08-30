@@ -2,12 +2,12 @@
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { VERDICT_GLYPH } from '@confirm-deny/casefile';
-import { TriageRunner } from './runner.js';
-import { CaseStore, newCase } from './store.js';
-import { UngatedWritePathError } from './policy.js';
-import { CaseFileInvalidError } from './artifacts.js';
-import type { PendingCall, PendingDecision } from './gate.js';
-import type { TriageEvent } from './events.js';
+import { TriageRunner } from './runner.ts';
+import { CaseStore, newCase } from './store.ts';
+import { UngatedWritePathError } from './policy.ts';
+import { CaseFileInvalidError } from './artifacts.ts';
+import type { PendingCall, PendingDecision } from './gate.ts';
+import type { TriageEvent } from './events.ts';
 
 /**
  * The CLI is the spine: an issue URL in, a validated case file out, with the

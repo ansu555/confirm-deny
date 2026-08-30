@@ -5,7 +5,7 @@ import {
   parseCaseFile,
   verdictViolations,
   type CaseFileInput,
-} from '../src/index.js';
+} from '../src/index.ts';
 
 /**
  * T1 — the honesty rules, executable.

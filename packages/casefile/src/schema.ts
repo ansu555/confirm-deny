@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { VERDICTS, deriveConfidence, type Verdict } from './verdict.js';
+import { VERDICTS, deriveConfidence, type Verdict } from './verdict.ts';
 
 /**
  * The case file — the agent's output contract.

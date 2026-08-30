@@ -6,7 +6,7 @@ import {
   isDestructive,
   isWrite,
   type McpToolEntry,
-} from '../src/policy.js';
+} from '../src/policy.ts';
 
 /**
  * The annotations below are GitHub's own committed tool definitions, read from
