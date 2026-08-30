@@ -9,12 +9,6 @@ import { CaseFileInvalidError } from './artifacts.ts';
 import type { PendingCall, PendingDecision } from './gate.ts';
 import type { TriageEvent } from './events.ts';
 
-/**
- * The CLI is the spine: an issue URL in, a validated case file out, with the
- * gate in the middle. The Desk is a nicer surface onto exactly this flow — if
- * the Desk is ever cut, this still demonstrates the whole product.
- */
-
 const c = {
   dim: (s: string) => `\x1b[2m${s}\x1b[0m`,
   bold: (s: string) => `\x1b[1m${s}\x1b[0m`,
@@ -79,21 +73,12 @@ function render(event: TriageEvent): void {
   }
 }
 
-/**
- * One interface for the whole run, not one per gate.
- *
- * `readline.close()` closes the underlying stdin, so a second gate — which is
- * exactly what the deny→revise loop produces — found stdin already gone and
- * the process exited mid-loop. Observed live 2026-08-30: the revision was
- * correct and never got asked about.
- */
 let prompt: ReturnType<typeof createInterface> | null = null;
 function operatorPrompt(): ReturnType<typeof createInterface> {
   prompt ??= createInterface({ input: stdin, output: stdout });
   return prompt;
 }
 
-/** The gate, at a terminal. Deny requires a reason here too — same rule. */
 async function askOperator(calls: PendingCall[]): Promise<PendingDecision[]> {
   const rl = operatorPrompt();
   const decisions: PendingDecision[] = [];
@@ -116,8 +101,7 @@ async function askOperator(calls: PendingCall[]): Promise<PendingDecision[]> {
 
       let reason = '';
       while (!reason) {
-        // Enforced twice on purpose: here for a usable prompt, and in
-        // buildApprovalResume so no other caller can route around it.
+        
         reason = (await rl.question(`   reason (required): `)).trim();
         if (!reason) console.log(c.dim('   A denial without a reason teaches the agent nothing.'));
       }
@@ -131,8 +115,6 @@ async function askOperator(calls: PendingCall[]): Promise<PendingDecision[]> {
 async function main(): Promise<void> {
   const [command, argument] = process.argv.slice(2);
 
-  // Usage before credentials: a stranger running this for the first time should
-  // learn what it does, not what they forgot to export.
   const usage = (code: number): never => {
     console.log('usage:\n  confirm-deny preflight\n  confirm-deny triage <github issue url>');
     process.exit(code);
@@ -143,9 +125,7 @@ async function main(): Promise<void> {
 
   const runner = new TriageRunner({
     baseUrl: env('TRUEFORGE_BASE_URL', 'http://localhost:8790'),
-    // Local (standalone) TrueForge logs `Auth is disabled; browser login is
-    // off` and rejects nothing, so an empty token is the correct value there.
-    // A hosted deployment with OIDC does need one.
+ 
     token: process.env['TRUEFORGE_TOKEN'] ?? '',
     model: env('CONFIRM_DENY_MODEL', 'google-gemini/gemini-3-1-flash-lite'),
     githubServerName: process.env['GITHUB_MCP_SERVER'] ?? 'github',
@@ -161,8 +141,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Preflight is not optional. A demo where the gate silently does not fire is
-  // worse than no demo.
   const report = await runner.auditApprovalPolicy();
   console.log(c.green(`✓ gate covers ${report.gated.length} tools`) + c.dim(' (preflight)'));
 
@@ -174,8 +152,7 @@ async function main(): Promise<void> {
 
   let outcome = await runner.triage(sessionId, issueUrl, render);
 
-  // Deny → revise → gate again. Bounded so a disagreeing agent cannot loop
-  // forever at the operator's expense.
+ 
   for (let round = 0; outcome.pending.length > 0 && round < 5; round++) {
     await store.patch(record.id, { status: 'awaiting_approval', turnId: outcome.turnId });
     const decisions = await askOperator(outcome.pending);
@@ -198,7 +175,6 @@ main().catch((error: unknown) => {
     process.exit(1);
   }
   if (error instanceof CaseFileInvalidError) {
-    // Loud on purpose: this is the boundary doing its job, not a crash.
     console.error(`\n${c.red(error.message)}`);
     console.error(c.dim('\nThe agent wrote a case file its own verdict could not support.'));
     process.exit(1);

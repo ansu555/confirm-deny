@@ -2,17 +2,6 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { CaseFile } from '@confirm-deny/casefile';
 
-/**
- * A deliberately disposable projection.
- *
- * TrueForge's session is the source of truth. This holds just enough to render
- * a queue and re-attach after a reload — anything lost here is recoverable by
- * re-reading the session, which is why a JSON file with an atomic write is
- * enough and a database would be a liability at this size.
- *
- * Documented as a choice rather than a shortcut, because it is one.
- */
-
 export type CaseStatus = 'queued' | 'running' | 'awaiting_approval' | 'done' | 'failed';
 
 export interface CaseRecord {
@@ -20,10 +9,8 @@ export interface CaseRecord {
   issueUrl: string;
   status: CaseStatus;
   sessionId: string | null;
-  /** Latest turn — what a reconnect re-attaches to. */
   turnId: string | null;
   casefile: CaseFile | null;
-  /** Present when status is 'failed'; shown rather than swallowed. */
   error: string | null;
   createdAt: string;
   updatedAt: string;
@@ -46,7 +33,6 @@ export class CaseStore {
       const parsed: unknown = JSON.parse(raw);
       return Array.isArray(parsed) ? (parsed as CaseRecord[]) : [];
     } catch (e) {
-      // A missing or unreadable projection is not an error: it is rebuildable.
       if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
       return [];
     }
@@ -72,7 +58,6 @@ export class CaseStore {
     return this.upsert({ ...existing, ...changes });
   }
 
-  /** Write via temp file + rename so a crash mid-write cannot leave a torn file. */
   private async write(cases: CaseRecord[]): Promise<void> {
     await mkdir(dirname(this.file), { recursive: true });
     const tmp = `${this.file}.${process.pid}.tmp`;

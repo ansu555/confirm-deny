@@ -14,18 +14,8 @@ import { auditPolicy, assertGated, type McpToolEntry, type PolicyReport } from '
 import { findCaseFilePath, parseSandboxArtifacts, validateCaseFile } from './artifacts.ts';
 import type { TriageEvent, TriageEventSink } from './events.ts';
 
-/**
- * Session lifecycle and stream fan-out.
- *
- * The TrueForge key lives here and only here. The browser talks to our route
- * handlers, never to the harness — which is the same boundary that keeps model
- * and MCP credentials out of the sandbox, applied one layer further out.
- */
-
 export interface RunnerOptions {
-  /** TrueForge API token. Stays server-side; it never reaches the browser. */
   token: string;
-  /** e.g. http://localhost:3000 for `npx @truefoundry/trueforge`. */
   baseUrl: string;
   model: string;
   githubServerName?: string;
@@ -33,9 +23,7 @@ export interface RunnerOptions {
 
 export interface TurnOutcome {
   turnId: string;
-  /** Non-empty when the turn ended paused on the gate. */
   pending: PendingCall[];
-  /** Present once the agent has announced and written a valid case file. */
   casefile: CaseFile | null;
   finalText: string | null;
 }
@@ -51,14 +39,6 @@ export class TriageRunner {
     this.client = new TrueForge({ baseUrl: options.baseUrl, token: options.token });
   }
 
-  /**
-   * Preflight: resolve the approval policy against the LIVE tool list.
-   *
-   * Literal names in `requireApprovalForTools` are never validated by the
-   * harness, and the list replaces the default rather than extending it. So a
-   * stale name gates nothing and says nothing. This turns that silent failure
-   * into a refusal to start.
-   */
   async auditApprovalPolicy(): Promise<PolicyReport> {
     const serverName = this.options.githubServerName ?? 'github';
     const response = await this.client.mcpServers.listTools(serverName);
@@ -69,7 +49,6 @@ export class TriageRunner {
     return report;
   }
 
-  /** Open a session with the agent spec inline — no pre-registration needed. */
   async startSession(): Promise<string> {
     const session = await this.client.sessions.create({
       agent: {
@@ -84,18 +63,11 @@ export class TriageRunner {
     return session.data.id;
   }
 
-  /** Begin triage of one issue. Returns when the turn ends — done or paused. */
   async triage(sessionId: string, issueUrl: string, emit: TriageEventSink): Promise<TurnOutcome> {
     await emit({ type: 'session.started', sessionId, issueUrl });
     return this.runTurn(sessionId, { input: [triageMessage(issueUrl)] }, emit);
   }
 
-  /**
-   * Resume a paused turn with the operator's decisions.
-   *
-   * This is a NEW turn. The paused one is over — it reached a terminal state
-   * with no output. Nothing is "unpaused".
-   */
   async resolveGate(
     sessionId: string,
     decisions: readonly PendingDecision[],
@@ -109,16 +81,9 @@ export class TriageRunner {
         ...(d.status === 'deny' ? { reason: d.reason } : {}),
       });
     }
-    // Throws if a deny arrived without a reason — enforced before the wire.
     return this.runTurn(sessionId, { input: buildApprovalResume(decisions) }, emit);
   }
 
-  /**
-   * Re-attach to a turn already in flight.
-   *
-   * A reload must never re-run the triage: that would burn a sandbox, re-clone
-   * the repo, and — worse — could re-open a gate the operator already answered.
-   */
   async reattach(sessionId: string, turnId: string, emit: TriageEventSink): Promise<TurnOutcome> {
     const stream = await this.client.sessions.subscribeToTurn(sessionId, turnId);
     return this.consume(sessionId, turnId, stream, emit);
@@ -149,10 +114,6 @@ export class TriageRunner {
       const event = raw as { type: string } & Record<string, unknown>;
       this.index.record(event as never);
 
-      // Every event carries the turn it belongs to. Prefer that over the
-      // event's own `id`: on `turn.created` those are two different things —
-      // the turn is `…st5se.local`, the event is a plain ULID — and passing an
-      // event id to a turn-scoped endpoint 404s.
       const carried = event['turnId'] ?? event['turn_id'];
       if (typeof carried === 'string' && carried) turnId = carried;
 
@@ -213,15 +174,6 @@ export class TriageRunner {
         }
 
         case 'tool.approval_required': {
-          // Resolve now, while the stream that produced the source message is
-          // still being read — the operator must see the real arguments.
-          //
-          // The stream does not always carry the `model.message` the approval
-          // points at: observed live on 2026-08-30, where `sourceEventId`
-          // named a message that never appeared as a stream event. Backfill
-          // the index from the turn's persisted events and retry once. Still
-          // no match ⇒ the error stands, because presenting an approval whose
-          // arguments we cannot quote verbatim is worse than failing.
           try {
             pending = resolvePendingCalls(event as never, this.index);
           } catch (error) {
@@ -255,14 +207,6 @@ export class TriageRunner {
     return { turnId, pending, casefile, finalText: casefilePath ? finalText : finalText };
   }
 
-  /**
-   * Replay the turn's persisted events into the index.
-   *
-   * The live stream is the fast path but not an authoritative record: an
-   * approval can name a `model.message` that never arrived as a stream event.
-   * The events endpoint is the durable one, so it is what we fall back to when
-   * a tool call will not resolve.
-   */
   private async backfillIndex(sessionId: string, turnId: string): Promise<void> {
     for (const id of await this.turnCandidates(sessionId, turnId)) {
       try {
@@ -270,16 +214,10 @@ export class TriageRunner {
         for await (const event of page) this.index.record(event as never);
         return;
       } catch {
-        // Wrong id for this endpoint; try the next candidate.
       }
     }
   }
 
-  /**
-   * Turn ids to try, best first. The id carried on the stream is not always
-   * the one the turn-scoped endpoints accept, so the session's own turn list
-   * is the authority when it is not.
-   */
   private async turnCandidates(sessionId: string, turnId: string): Promise<string[]> {
     const candidates = turnId ? [turnId] : [];
     try {
@@ -289,12 +227,10 @@ export class TriageRunner {
         if (id && !candidates.includes(id)) candidates.push(id);
       }
     } catch {
-      // Listing is a convenience here; the passed id may still work.
     }
     return candidates;
   }
 
-  /** Pull an artifact out of the sandbox and validate it at the boundary. */
   async pullCaseFile(sessionId: string, turnId: string, path: string): Promise<CaseFile> {
     const raw = await this.downloadText(sessionId, turnId, path);
     return validateCaseFile(path, raw);
@@ -312,7 +248,6 @@ interface ToolCallish {
   toolInfo?: { type: string; serverName: string };
 }
 
-/** Message content is either a string or content parts; flatten to text. */
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
