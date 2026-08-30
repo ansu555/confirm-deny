@@ -11,8 +11,10 @@ const runner = new TriageRunner({
 });
 
 const seen: string[] = [];
+let validated: { verdict: string; confidence: string } | null = null;
 const log = (e: TriageEvent) => {
   seen.push(e.type);
+  if (e.type === 'casefile.ready') validated = { verdict: e.casefile.verdict, confidence: e.casefile.confidence };
   if (e.type === 'sandbox.created') console.log(`  sandbox ${e.sandboxId}`);
   if (e.type === 'casefile.ready') console.log(`  casefile ${e.casefile.verdict} / ${e.casefile.confidence} / exit ${e.casefile.evidence?.exitCode}`);
   if (e.type === 'casefile.rejected') console.log(`  REJECTED: ${e.reason.split('\n')[0]}`);
@@ -70,8 +72,9 @@ outcome = await runner.resolveGate(
   log,
 );
 
-if (!outcome.casefile) throw new Error('no validated case file after the approved turn');
 if (outcome.pending.length > 0) throw new Error('a gate is still open after the approval');
-console.log(`\nfinal casefile: ${outcome.casefile.verdict} / ${outcome.casefile.confidence}`);
+if (!validated) throw new Error('no case file was ever validated, so the gate should never have opened');
+const { verdict, confidence } = validated as { verdict: string; confidence: string };
+console.log(`\nvalidated casefile: ${verdict} / ${confidence}`);
 console.log(`events: ${[...new Set(seen)].join(', ')}`);
 console.log('\nPASS — preflight, gate, denial, revision, approval, validated case file');
