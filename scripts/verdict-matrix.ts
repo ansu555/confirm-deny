@@ -26,6 +26,7 @@ for (const n of numbers) {
 
   console.log(`\n=== issue #${n} — expecting ${EXPECTED[n]} ===`);
   try {
+    await runner.auditApprovalPolicy();
     const sessionId = await runner.startSession();
     const outcome = await runner.triage(
       sessionId,
@@ -43,7 +44,12 @@ for (const n of numbers) {
     console.log(`    verdict ${cf.verdict} ${ok ? '✓ MATCH' : `✗ expected ${EXPECTED[n]}`}`);
     console.log(`    confidence ${cf.confidence} | exit ${cf.evidence?.exitCode ?? 'n/a'} | unverified ${cf.analysis.unverifiedClaims.length}`);
     if (cf.analysis.openQuestion) console.log(`    question: ${cf.analysis.openQuestion}`);
-    console.log(`    gate pending: ${outcome.pending.length} (left unresolved — nothing posted)`);
+    if (outcome.pending.length === 0) {
+      failures.push(`#${n}: no gate opened, so the reply may already have been posted`);
+      console.log('    NO GATE OPENED — cannot claim nothing was posted');
+    } else {
+      console.log(`    gate pending: ${outcome.pending.length} (left unresolved — nothing posted)`);
+    }
   } catch (error) {
     failures.push(`#${n}: ${(error as Error).message.split('\n')[0]}`);
     console.log(`    ERROR: ${(error as Error).message.split('\n')[0]}`);

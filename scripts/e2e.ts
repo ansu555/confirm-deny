@@ -26,25 +26,37 @@ console.log('preflight ok');
 const sessionId = await runner.startSession();
 let outcome = await runner.triage(sessionId, ISSUE, log);
 
+const commentCall = (o: typeof outcome) => {
+  const calls = o.pending.filter((c) => c.toolName === 'add_issue_comment');
+  if (calls.length !== 1) {
+    throw new Error(`expected exactly one gated add_issue_comment, got ${calls.length} (pending: ${o.pending.map((c) => c.toolName).join(', ')})`);
+  }
+  return calls[0]!;
+};
+
 if (outcome.pending.length === 0) throw new Error('no gate opened on the first turn');
-const firstBody = JSON.parse(outcome.pending[0]!.argumentsPretty) as { body?: string };
+const firstCall = commentCall(outcome);
+const firstBody = JSON.parse(firstCall.argumentsPretty) as { body?: string };
 console.log(`\nGATE 1 body: ${(firstBody.body ?? '').slice(0, 90)}...`);
 
 console.log('\n-- denying with a reason --');
 outcome = await runner.resolveGate(
   sessionId,
-  outcome.pending.map((c) => ({
-    toolCallId: c.toolCallId,
-    threadId: c.threadId,
-    status: 'deny' as const,
-    reason: 'State the exact command you ran and its exit code, and name which versions you did and did not check.',
-  })),
+  [
+    {
+      toolCallId: firstCall.toolCallId,
+      threadId: firstCall.threadId,
+      status: 'deny' as const,
+      reason: 'State the exact command you ran and its exit code, and name which versions you did and did not check.',
+    },
+  ],
   log,
 );
 
 if (outcome.pending.length === 0) throw new Error('agent did not call the tool again after the denial');
 if (outcome.casefileError) throw new Error(`case file still rejected after the denial: ${outcome.casefileError.message}`);
-const secondBody = JSON.parse(outcome.pending[0]!.argumentsPretty) as { body?: string };
+const secondCall = commentCall(outcome);
+const secondBody = JSON.parse(secondCall.argumentsPretty) as { body?: string };
 console.log(`\nGATE 2 body: ${(secondBody.body ?? '').slice(0, 160)}...`);
 if (secondBody.body === firstBody.body) {
   throw new Error('the agent ignored the denial: the second draft is byte-identical to the first');
@@ -54,7 +66,7 @@ console.log('revised: yes');
 console.log('\n-- allowing --');
 outcome = await runner.resolveGate(
   sessionId,
-  outcome.pending.map((c) => ({ toolCallId: c.toolCallId, threadId: c.threadId, status: 'allow' as const })),
+  [{ toolCallId: secondCall.toolCallId, threadId: secondCall.threadId, status: 'allow' as const }],
   log,
 );
 

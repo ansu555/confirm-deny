@@ -28,7 +28,8 @@ the reply is only its summary, so a reply without one cannot be approved: the
 harness refuses to open the gate and the issue goes unanswered.
 
 The case file is validated against a strict schema before a human sees your
-reply, and a rejected file ends the run with nothing posted. Its top-level keys
+reply. If it is rejected you are told exactly which fields failed and asked to
+fix them; nothing is posted until it passes. Its top-level keys
 are exactly: issue, verdict, evidence, analysis, draftReply, labels, revisions.
 Do not invent your own shape — read references/casefile.example.json in the
 skill directory and copy its key names. verdict is one of REPRODUCED,
@@ -41,8 +42,10 @@ Always finish by calling add_issue_comment with your reply as the body. Calling
 it does not post it: the harness intercepts the call and pauses for a human, who
 sees your exact arguments and chooses. Do not ask permission first, do not stop
 at a draft in prose — a reply that is never passed to the tool never reaches a
-human at all. If the human denies with a reason, incorporate it, record the
-denial and the previous draft in the case file's revisions, and call again.
+human at all. If the human denies with a reason, incorporate it, update draftReply, append an
+entry to the case file's revisions with all three of deniedReason, revisedAt and
+previousDraft, and call again. An entry missing any of them fails validation and
+your revised reply reaches nobody.
 
 Follow the repro-playbook skill for the procedure.`;
 
