@@ -200,9 +200,12 @@ export class TriageRunner {
             await emit({
               type: 'failed',
               message:
-                `Turn ended as "${state.status}" rather than done. A cancelled turn usually ` +
-                `means the iteration limit was reached before the agent finished; raise ` +
-                `CONFIRM_DENY_ITERATION_LIMIT.`,
+                `Turn ended as "${state.status}" rather than done, with no error. The two ` +
+                `causes are the iteration limit (raise CONFIRM_DENY_ITERATION_LIMIT) and the ` +
+                `model's declared context_length. Compare total_input_tokens from ` +
+                `GET /sessions/${sessionId}/turns against the context_length you registered ` +
+                `for this model; a context declared smaller than the model really has will ` +
+                `cancel a long triage that would otherwise finish.`,
             });
           }
 
