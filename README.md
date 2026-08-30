@@ -202,10 +202,25 @@ nothing that matters here.
 
 - [PR #1 — Make the agent call the write tool so the approval gate can fire](https://github.com/ansu555/confirm-deny/pull/1)
 - [PR #2 — Add CI, and correct the README to match what the project actually does](https://github.com/ansu555/confirm-deny/pull/2)
+- [PR #6 — Give the agent a budget and a stopping rule](https://github.com/ansu555/confirm-deny/pull/6) — **reviewed by Qodo; one Correctness finding, fixed, re-reviewed clean**
 
 Both merged. Every substantive change after the first live run went through a
 pull request rather than straight to `main`, and PR #2 merged green on CI —
 typecheck plus the 41 tests.
+
+**PR #6 was reviewed by Qodo, and the review found a real defect.** The first
+draft of the agent's stopping rule told it to return `CANNOT_REPRODUCE` for any
+non-reproduction on the reported version, without requiring the run to have
+succeeded:
+
+> **[Correctness] Misclassifies failed setup as absent bug** — an agent
+> following this instruction can publish a rejected case file or incorrectly
+> close a real report.
+
+That is the worst failure this product has: a bad checkout or a missing
+dependency would have closed a genuine bug report on evidence that does not
+exist. The rule now names faithful execution as a precondition and routes setup
+failures to `NEEDS_INFO`. Re-reviewed clean.
 
 Stated plainly, because the project's own honesty rule applies to its own
 README: **the trail is real but thin.** The build spent its day standing the

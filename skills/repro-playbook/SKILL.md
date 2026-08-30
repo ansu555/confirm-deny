@@ -22,6 +22,26 @@ inference. They go in different fields and they are never blended. If you could
 not verify something, it goes in `unverifiedClaims` — that list is not a
 weakness, it is the point.
 
+## Budget
+
+You have roughly **40 tool calls** to reach the gate. Spend them like this:
+
+| Steps 1–4 · read, set up, repro, capture | ~15 |
+| Step 6 · bisect, only if it reproduced | ~10 |
+| Steps 7–8 · case file and reply | ~10 |
+| Slack | ~5 |
+
+Investigation is not the deliverable — **a verdict a maintainer can act on is.**
+Once the captured evidence supports a verdict, stop investigating and write it
+up. You do not need to understand the whole codebase, read every version's
+diff, or confirm the cause a second way.
+
+If you are past the budget without a verdict, take the verdict your evidence
+already supports and record what is still open in `unverifiedClaims`. That list
+exists precisely so you can stop early and stay honest. A turn that runs out of
+iterations produces **nothing at all** — no case file, no reply, no gate — which
+is strictly worse for the reporter than a `NEEDS_INFO` written on time.
+
 ## Procedure
 
 ### 1. Read before running
@@ -114,6 +134,23 @@ into steps, not given a longer rope.
 Use `references/verdict-rules.md`. The rules there are enforced by a schema on
 the far side — a case file whose verdict its evidence cannot support is
 **rejected**, not published. Do not try to route around this; fix the verdict.
+
+**If the repro ran faithfully and did not reproduce, you are done deciding.**
+The verdict is `CANNOT_REPRODUCE`, and the captured exit code is your evidence.
+
+"Faithfully" is a precondition, not a formality: the clone, the checkout and the
+script must all have succeeded, on the version they reported. A setup that
+failed — a bad checkout, a missing dependency, an import that resolved to the
+wrong copy — tells you **nothing about the bug**, and calling that
+`CANNOT_REPRODUCE` closes a real report on evidence you do not have. That is
+`NEEDS_INFO`, and the schema will reject the alternative anyway:
+`CANNOT_REPRODUCE` requires a **zero** exit code.
+Resist the pull to explain the reporter's experience before writing it up — a
+version that predates the bug, a different runtime, an unshared input. One
+cheap check is worth it: if a *later* version fails the same script, say so in
+one line and put the rest in `unverifiedClaims`. Do not read every diff between
+versions to build a theory. You are telling a maintainer what you observed, not
+proving what the reporter saw.
 
 ### 6. Bisect, if it reproduced and versions are available
 
