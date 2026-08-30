@@ -99,10 +99,52 @@ each must be given its own working directory explicitly:
 Each returns `{ version, failed, exitCode }` and nothing else. You report the
 first bad version.
 
-### 7. Write the case file
+### 7. Write the case file — required, and before step 8
 
-Write `/work/case/casefile.json` matching `references/casefile.example.json`,
-then announce both artifacts so they can be pulled out:
+`mkdir -p /work/case` first; it does not exist yet. Then write
+`/work/case/casefile.json`. This is the deliverable — the reply in step 8 is
+just its summary — so **do not go to step 8 without it.**
+
+The full shape is in `references/casefile.example.json`. The required skeleton,
+so you do not have to read that file to get this right:
+
+```json
+{
+  "issue": { "url": "...", "number": 1, "repo": "owner/name", "title": "..." },
+  "verdict": "REPRODUCED",
+  "evidence": {
+    "environment": { "os": "...", "python": "...", "packages": {} },
+    "reproScript": { "path": "/work/case/repro.py", "contents": "..." },
+    "command": "python /work/case/repro.py",
+    "exitCode": 1,
+    "stdout": "...",
+    "stderr": "...",
+    "durationMs": 0,
+    "truncated": false
+  },
+  "analysis": {
+    "summary": "...",
+    "firstBadVersion": "v2.3.0",
+    "bisectTrail": [{ "version": "v2.2.0", "failed": false }],
+    "duplicateOf": [],
+    "unverifiedClaims": ["..."],
+    "openQuestion": null,
+    "documentedBehaviourRef": null
+  },
+  "draftReply": "...",
+  "labels": ["bug"],
+  "revisions": []
+}
+```
+
+`evidence` is `null` only for `NEEDS_INFO`. Every other field is required, and
+the verdict must be supported by the evidence — a `REPRODUCED` with exit code 0
+is rejected on the far side and the run fails loudly.
+
+Do not set `confidence` — it is derived from your evidence, not self-reported.
+
+Then announce both artifacts, in a fenced block exactly like this, so they can
+be pulled out of the sandbox:
 
 ````text
 ```sandbox_artifacts
@@ -110,9 +152,6 @@ then announce both artifacts so they can be pulled out:
 [Repro script](/work/case/repro.py)
 ```
 ````
-
-Do not set a `confidence` field — it is derived from your evidence on the far
-side, not self-reported.
 
 ### 8. Call `add_issue_comment` with the reply
 
