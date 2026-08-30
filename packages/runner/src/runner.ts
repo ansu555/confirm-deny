@@ -11,7 +11,12 @@ import {
   type PendingDecision,
 } from './gate.ts';
 import { auditPolicy, assertGated, type McpToolEntry, type PolicyReport } from './policy.ts';
-import { findCaseFilePath, parseSandboxArtifacts, validateCaseFile } from './artifacts.ts';
+import {
+  findCaseFilePath,
+  parseSandboxArtifacts,
+  validateCaseFile,
+  CaseFileInvalidError,
+} from './artifacts.ts';
 import type { TriageEvent, TriageEventSink } from './events.ts';
 
 export interface RunnerOptions {
@@ -31,6 +36,7 @@ export interface TurnOutcome {
 export class TriageRunner {
   private readonly client: TrueForge;
   private readonly index = new EventIndex();
+  private casefilePath: string | null = null;
 
   private readonly options: RunnerOptions;
 
@@ -108,7 +114,6 @@ export class TriageRunner {
     let pending: PendingCall[] = [];
     let finalText: string | null = null;
     let casefile: CaseFile | null = null;
-    let casefilePath: string | null = null;
 
     for await (const raw of stream) {
       const event = raw as { type: string } & Record<string, unknown>;
@@ -146,9 +151,11 @@ export class TriageRunner {
             finalText = text;
             await emit({ type: 'agent.said', threadId, text });
 
-            for (const artifact of parseSandboxArtifacts(text)) {
+            const artifacts = parseSandboxArtifacts(text);
+            for (const artifact of artifacts) {
               await emit({ type: 'artifact.available', ...artifact });
             }
+            this.casefilePath = findCaseFilePath(artifacts) ?? this.casefilePath;
           }
 
           for (const call of (event['toolCalls'] as ToolCallish[] | undefined) ?? []) {
@@ -189,13 +196,10 @@ export class TriageRunner {
           const state = event['state'] as Parameters<typeof pausedApprovals>[0];
           const paused = pausedApprovals(state).length > 0;
 
-          if (!paused && finalText) {
-            const path = findCaseFilePath(parseSandboxArtifacts(finalText));
-            if (path) {
-              casefilePath = path;
-              casefile = await this.pullCaseFile(sessionId, turnId, path);
-              await emit({ type: 'casefile.ready', casefile, path });
-            }
+          if (!paused && this.casefilePath) {
+            const path = this.casefilePath;
+            casefile = await this.pullCaseFile(sessionId, turnId, path);
+            await emit({ type: 'casefile.ready', casefile, path });
           }
 
           await emit({ type: 'turn.finished', turnId, paused });
@@ -204,7 +208,7 @@ export class TriageRunner {
       }
     }
 
-    return { turnId, pending, casefile, finalText: casefilePath ? finalText : finalText };
+    return { turnId, pending, casefile, finalText };
   }
 
   private async backfillIndex(sessionId: string, turnId: string): Promise<void> {
@@ -232,8 +236,17 @@ export class TriageRunner {
   }
 
   async pullCaseFile(sessionId: string, turnId: string, path: string): Promise<CaseFile> {
-    const raw = await this.downloadText(sessionId, turnId, path);
-    return validateCaseFile(path, raw);
+    let lastError: unknown = null;
+    for (const id of await this.turnCandidates(sessionId, turnId)) {
+      try {
+        const raw = await this.downloadText(sessionId, id, path);
+        return validateCaseFile(path, raw);
+      } catch (error) {
+        if (error instanceof CaseFileInvalidError) throw error;
+        lastError = error;
+      }
+    }
+    throw lastError ?? new Error(`Could not download ${path} from any turn in ${sessionId}.`);
   }
 
   async downloadText(sessionId: string, turnId: string, path: string): Promise<string> {
