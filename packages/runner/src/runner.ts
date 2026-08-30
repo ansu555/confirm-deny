@@ -46,6 +46,20 @@ export interface TurnOutcome {
 
 export type CaseFileRejection = CaseFileInvalidError | MissingCaseFileError;
 
+export class ApprovalOnRejectedCaseFileError extends Error {
+  readonly rejection: CaseFileRejection;
+
+  constructor(rejection: CaseFileRejection) {
+    super(
+      `Refusing to approve this call: the case file behind it was rejected, so there is no ` +
+        `checkable evidence for the reply. Let the agent repair it and call again.\n` +
+        rejection.message,
+    );
+    this.name = 'ApprovalOnRejectedCaseFileError';
+    this.rejection = rejection;
+  }
+}
+
 export function rejectionReason(error: CaseFileRejection): string {
   if (error instanceof MissingCaseFileError) {
     return (
@@ -64,6 +78,7 @@ export class TriageRunner {
   private readonly client: TrueForge;
   private readonly index = new EventIndex();
   private casefilePath: string | null = null;
+  private rejection: CaseFileRejection | null = null;
 
   private readonly options: RunnerOptions;
 
@@ -106,6 +121,10 @@ export class TriageRunner {
     decisions: readonly PendingDecision[],
     emit: TriageEventSink,
   ): Promise<TurnOutcome> {
+    if (this.rejection && decisions.some((d) => d.status === 'allow')) {
+      throw new ApprovalOnRejectedCaseFileError(this.rejection);
+    }
+
     for (const d of decisions) {
       await emit({
         type: 'gate.resolved',
@@ -244,6 +263,7 @@ export class TriageRunner {
           if (path) {
             try {
               casefile = await this.pullCaseFile(sessionId, turnId, path);
+              this.rejection = null;
               await emit({ type: 'casefile.ready', casefile, path });
             } catch (error) {
               if (!paused) throw error;
@@ -251,6 +271,7 @@ export class TriageRunner {
                 error instanceof CaseFileInvalidError
                   ? error
                   : new MissingCaseFileError(turnId);
+              this.rejection = casefileError;
               await emit({ type: 'casefile.rejected', reason: rejectionReason(casefileError) });
             }
           }

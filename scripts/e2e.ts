@@ -43,9 +43,13 @@ outcome = await runner.resolveGate(
 );
 
 if (outcome.pending.length === 0) throw new Error('agent did not call the tool again after the denial');
+if (outcome.casefileError) throw new Error(`case file still rejected after the denial: ${outcome.casefileError.message}`);
 const secondBody = JSON.parse(outcome.pending[0]!.argumentsPretty) as { body?: string };
 console.log(`\nGATE 2 body: ${(secondBody.body ?? '').slice(0, 160)}...`);
-console.log(`revised: ${secondBody.body !== firstBody.body}`);
+if (secondBody.body === firstBody.body) {
+  throw new Error('the agent ignored the denial: the second draft is byte-identical to the first');
+}
+console.log('revised: yes');
 
 console.log('\n-- allowing --');
 outcome = await runner.resolveGate(
@@ -54,6 +58,8 @@ outcome = await runner.resolveGate(
   log,
 );
 
-console.log(`\nfinal casefile: ${outcome.casefile ? outcome.casefile.verdict : 'none'}`);
-console.log(`pending after allow: ${outcome.pending.length}`);
+if (!outcome.casefile) throw new Error('no validated case file after the approved turn');
+if (outcome.pending.length > 0) throw new Error('a gate is still open after the approval');
+console.log(`\nfinal casefile: ${outcome.casefile.verdict} / ${outcome.casefile.confidence}`);
 console.log(`events: ${[...new Set(seen)].join(', ')}`);
+console.log('\nPASS — preflight, gate, denial, revision, approval, validated case file');

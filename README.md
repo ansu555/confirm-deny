@@ -13,7 +13,7 @@ It turns an unverified issue into a **schema-validated case file** — or a defe
 <br/>
 
 [![CI](https://github.com/ansu555/confirm-deny/actions/workflows/ci.yml/badge.svg)](https://github.com/ansu555/confirm-deny/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-48%20passing-3fb950?style=flat-square)](#tests)
+[![Tests](https://img.shields.io/badge/tests-51%20passing-3fb950?style=flat-square)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522.14-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![Built on TrueForge](https://img.shields.io/badge/built%20on-TrueForge-6e56cf?style=flat-square)](https://github.com/truefoundry/trueforge)
@@ -286,6 +286,10 @@ which field it got wrong and calls `add_issue_comment` again. Two repair rounds,
 fails. The gate stays shut throughout — you are never asked to approve a draft the schema has
 already refused, and you are not asked to explain a mistake the schema can describe better.
 
+The refusal is enforced in the runner, not just the CLI: while a rejection stands,
+`resolveGate` **rejects an `allow` outright** and accepts only a denial. Any caller of the
+library gets that guarantee, not only the one operator surface we happen to ship.
+
 > This is the thesis in miniature. The contract is machine-checkable, so the correction is
 > automatic and the human is spent only on the judgement a machine cannot make: whether this
 > reply should go out under their name.
@@ -442,7 +446,7 @@ check is one line, and it is the difference between a documented hazard and an e
 | `register-agent.ts` | Publish the agent to TrueForge so the stock chat UI can run it. |
 | `scripts/e2e.ts` | Drive the full arc programmatically against a live stack, including a denial and a revision. |
 | `scripts/verdict-matrix.ts` | Triage all four seeded issues and check each verdict; posts nothing. |
-| `pnpm test` | 48 tests. |
+| `pnpm test` | 51 tests. |
 | `pnpm typecheck` | Project-wide `tsc -b`. |
 
 ---
@@ -466,6 +470,9 @@ confirm-deny
 │  ├─ SKILL.md                   8 steps, a budget, and a stopping rule
 │  ├─ scripts/capture.sh         exit code · stdout · stderr · duration → JSON
 │  └─ references/                verdict rules · reply templates · example case file
+├─ scripts/                      live-stack drivers (need a running TrueForge)
+│  ├─ e2e.ts                     the whole arc, including a denial and a revision
+│  └─ verdict-matrix.ts          all four seeded issues; posts nothing
 └─ .github/workflows/ci.yml      typecheck + tests on every PR
 ```
 
@@ -489,7 +496,7 @@ Every feature is here because **removing it makes the job impossible** — not t
 ## Tests
 
 ```bash
-pnpm test        # 48 passing
+pnpm test        # 51 passing
 ```
 
 The one worth pointing at is the **gate regression test**: a fixture of a paused turn asserting

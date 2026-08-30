@@ -2,7 +2,7 @@
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { VERDICT_GLYPH } from '@confirm-deny/casefile';
-import { TriageRunner, rejectionReason } from './runner.ts';
+import { TriageRunner, rejectionReason, ApprovalOnRejectedCaseFileError } from './runner.ts';
 import { CaseStore, newCase } from './store.ts';
 import { UngatedWritePathError, HostExecutionError } from './policy.ts';
 import { CaseFileInvalidError, MissingCaseFileError } from './artifacts.ts';
@@ -215,7 +215,10 @@ async function main(): Promise<void> {
     await store.patch(record.id, { status: 'awaiting_approval', turnId: outcome.turnId });
 
     if (outcome.casefileError) {
-      if (repairs >= REPAIR_LIMIT) throw outcome.casefileError;
+      if (repairs >= REPAIR_LIMIT) {
+        await store.patch(record.id, { status: 'failed', turnId: outcome.turnId });
+        throw outcome.casefileError;
+      }
       repairs += 1;
       await render({ type: 'casefile.repair', round: repairs, limit: REPAIR_LIMIT });
       const reason = rejectionReason(outcome.casefileError);
@@ -236,7 +239,10 @@ async function main(): Promise<void> {
     outcome = await runner.resolveGate(sessionId, decisions, render);
   }
 
-  if (outcome.casefileError) throw outcome.casefileError;
+  if (outcome.casefileError) {
+    await store.patch(record.id, { status: 'failed', turnId: outcome.turnId });
+    throw outcome.casefileError;
+  }
 
   await store.patch(record.id, {
     status: outcome.pending.length ? 'awaiting_approval' : 'done',
@@ -249,6 +255,10 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
+  if (error instanceof ApprovalOnRejectedCaseFileError) {
+    console.error(`\n${c.red(error.message)}`);
+    process.exit(1);
+  }
   if (error instanceof OperatorInputClosedError) {
     console.error(`\n${c.red(error.message)}`);
     process.exit(1);
