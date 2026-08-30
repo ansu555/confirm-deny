@@ -697,12 +697,18 @@ product — a small text-wrapping library with a bug planted at `v2.3.0` and fou
 to produce four **different** verdicts. That is what shows the agent is judging rather than
 agreeing.
 
-| Issue | Expected | Why it is there |
-|:--|:--|:--|
-| [#1](https://github.com/ansu555/colwrap/issues/1) | `✓ REPRODUCED` | real bug — must be found *and* bisected to `v2.3.0` |
-| [#2](https://github.com/ansu555/colwrap/issues/2) | `○ CANNOT_REPRODUCE` | reporter was on a version predating the bug |
-| [#3](https://github.com/ansu555/colwrap/issues/3) | `? NEEDS_INFO` | no version, no steps, no reproducible claim |
-| [#4](https://github.com/ansu555/colwrap/issues/4) | `— NOT_A_BUG` | documented behaviour, working as specified |
+| Issue | Expected | Status | Why it is there |
+|:--|:--|:--|:--|
+| [#1](https://github.com/ansu555/colwrap/issues/1) | `✓ REPRODUCED` | **verified** | real bug — found *and* bisected to `v2.3.0` |
+| [#2](https://github.com/ansu555/colwrap/issues/2) | `○ CANNOT_REPRODUCE` | **verified** | reporter was on a version predating the bug |
+| [#3](https://github.com/ansu555/colwrap/issues/3) | `? NEEDS_INFO` | not yet run | no version, no steps, no reproducible claim |
+| [#4](https://github.com/ansu555/colwrap/issues/4) | `— NOT_A_BUG` | not yet run | documented behaviour, working as specified |
+
+**Two of the four are verified against a live run; two are not.** The issues were written to
+produce those verdicts, but writing an issue is not evidence about the agent, and this README
+does not get to claim otherwise. `node scripts/verdict-matrix.ts 3,4` runs them and posts
+nothing — it leaves every gate unresolved. The runs were started and abandoned when the model
+provider's rate limit made them impractical, which is recorded here rather than papered over.
 
 Any public repository works. Nothing needs to be installed on the target.
 
