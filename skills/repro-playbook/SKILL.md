@@ -46,6 +46,9 @@ git clone --quiet <public repo url> repo
 cd repo && git checkout <reported version tag>
 ```
 
+Version tags usually carry a `v` prefix (`v2.4.0`, not `2.4.0`). If checkout
+fails, `git tag --list` and use the real name.
+
 **Public repositories only.** If the report points at anything requiring
 credentials, refuse and record why. You have no credentials and you must never
 acquire any — see Safety below.
@@ -55,6 +58,29 @@ Record the real environment; do not assume it:
 ```bash
 uname -srm; python3 --version; python3 -m pip list --format=freeze
 ```
+
+#### Prove you are running the code you think you are
+
+Non-negotiable, and the most common way a repro silently lies. A `pip install`
+of the package, a leftover `build/` directory, or an installed copy on the
+default path will shadow your checkout — and the result you get back is then
+some *other* version's behaviour, reported as this one's.
+
+Run the source you checked out, explicitly:
+
+```bash
+cd /work/case/repo && PYTHONPATH=src python3 -c \
+  "import <pkg>; print(<pkg>.__file__); print(<pkg>.__version__)"
+```
+
+`__file__` **must** be inside `/work/case/repo`, and `__version__` **must**
+match the version you checked out. If either is wrong, fix the import path and
+run it again. Never `pip install` the package under test — that is what puts
+the wrong copy on the path in the first place.
+
+If you cannot make them match, the correct outcome is `NEEDS_INFO` with that
+stated as the reason. **A result from unverified code is not evidence**, and
+reporting one is the exact failure this whole procedure exists to prevent.
 
 ### 3. Write the smallest script that would exhibit the failure
 
@@ -67,15 +93,20 @@ Write it to `/work/case/repro.py` (or `.js`, `.sh` — match the project).
 ### 4. Run it through `capture.sh`
 
 ```bash
-bash /opt/tfy/skills/repro-playbook/scripts/capture.sh /work/case/capture.json \
-  python3 /work/case/repro.py
+CAPTURE=$(ls /opt/tf/skills/repro-playbook/scripts/capture.sh \
+             /opt/tfy/skills/repro-playbook/scripts/capture.sh 2>/dev/null | head -1)
+bash "$CAPTURE" /work/case/capture.json python3 /work/case/repro.py
 ```
+
+Resolve the path rather than assuming it — the skills mount has been seen at
+both `/opt/tf` and `/opt/tfy`. If neither exists, `find / -name capture.sh
+-path '*repro-playbook*' 2>/dev/null | head -1`.
 
 Never eyeball success. `capture.sh` records exit code, stdout, stderr and
 duration into JSON, truncating each stream at 64000 bytes and setting
 `truncated` when it does. Read that file; it is your evidence.
 
-A command that needs longer than the sandbox's 60s exec timeout must be split
+A command that needs longer than the sandbox's exec timeout must be split
 into steps, not given a longer rope.
 
 ### 5. Decide the verdict
@@ -99,10 +130,52 @@ each must be given its own working directory explicitly:
 Each returns `{ version, failed, exitCode }` and nothing else. You report the
 first bad version.
 
-### 7. Write the case file
+### 7. Write the case file — required, and before step 8
 
-Write `/work/case/casefile.json` matching `references/casefile.example.json`,
-then announce both artifacts so they can be pulled out:
+`mkdir -p /work/case` first; it does not exist yet. Then write
+`/work/case/casefile.json`. This is the deliverable — the reply in step 8 is
+just its summary — so **do not go to step 8 without it.**
+
+The full shape is in `references/casefile.example.json`. The required skeleton,
+so you do not have to read that file to get this right:
+
+```json
+{
+  "issue": { "url": "...", "number": 1, "repo": "owner/name", "title": "..." },
+  "verdict": "REPRODUCED",
+  "evidence": {
+    "environment": { "os": "...", "python": "...", "packages": {} },
+    "reproScript": { "path": "/work/case/repro.py", "contents": "..." },
+    "command": "python /work/case/repro.py",
+    "exitCode": 1,
+    "stdout": "...",
+    "stderr": "...",
+    "durationMs": 0,
+    "truncated": false
+  },
+  "analysis": {
+    "summary": "...",
+    "firstBadVersion": "v2.3.0",
+    "bisectTrail": [{ "version": "v2.2.0", "failed": false }],
+    "duplicateOf": [],
+    "unverifiedClaims": ["..."],
+    "openQuestion": null,
+    "documentedBehaviourRef": null
+  },
+  "draftReply": "...",
+  "labels": ["bug"],
+  "revisions": []
+}
+```
+
+`evidence` is `null` only for `NEEDS_INFO`. Every other field is required, and
+the verdict must be supported by the evidence — a `REPRODUCED` with exit code 0
+is rejected on the far side and the run fails loudly.
+
+Do not set `confidence` — it is derived from your evidence, not self-reported.
+
+Then announce both artifacts, in a fenced block exactly like this, so they can
+be pulled out of the sandbox:
 
 ````text
 ```sandbox_artifacts
@@ -111,18 +184,31 @@ then announce both artifacts so they can be pulled out:
 ```
 ````
 
-Do not set a `confidence` field — it is derived from your evidence on the far
-side, not self-reported.
+### 8. Call `add_issue_comment` with the reply
 
-### 8. Draft the reply, then stop
+Write the reply using `references/reply-templates.md`: evidence first, inference
+clearly marked, a workaround only if you genuinely know one.
 
-Use `references/reply-templates.md`. Evidence first, inference clearly marked, a
-workaround if you genuinely know one.
+Then **call `add_issue_comment`** with that reply as the body. This step is
+required — steps 1–7 are worthless if you stop here.
 
-**Then stop.** You draft replies; you never decide to post them. When you call
-the tool that would post, the turn will pause for a human. Present exactly what
-you intend to say, verbatim. If the human denies with a reason, incorporate that
-reason, record it in `revisions[]`, and ask again.
+**Calling it does not post it.** The harness intercepts the call and pauses the
+turn for a human, who sees the exact arguments you passed and decides. You are
+not asking for permission to call the tool; you call it, and the pause is
+automatic.
+
+So: do not ask whether you should post. Do not describe what you would say and
+wait. Do not end your turn with a draft in prose — a draft that is not passed
+to the tool never reaches a human, and the issue goes unanswered.
+
+If the human denies, they must give a reason. Incorporate it, record the denial
+and the previous draft in `revisions[]`, and call `add_issue_comment` again with
+the revised body.
+
+> The one thing you decide is *what to say*. The one thing you never decide is
+> *whether it goes out*. Calling the tool is how you hand that second decision
+> to a person — refusing to call it does not protect them, it just leaves them
+> with nothing to decide.
 
 ## Safety
 

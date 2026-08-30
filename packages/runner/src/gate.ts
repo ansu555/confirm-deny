@@ -1,19 +1,9 @@
 import type { TrueForgeApi } from '@truefoundry/trueforge-sdk';
 
-/**
- * The approval gate.
- *
- * A gated tool call ends the turn. It does not suspend it — the turn reaches a
- * terminal `done` state with `output: null` and a non-empty `requiredActions`.
- * Resuming is therefore a NEW turn carrying `user.tool_approval` items, one per
- * pending call.
- *
- * Everything here is a pure function over events, which is what lets the gate be
- * tested without a live server. See test/gate.test.ts — a red test there means
- * a safety property has stopped holding.
- */
+export type IndexableEvent =
+  | { type?: string; id?: string }
+  | { event?: { type?: string; id?: string } };
 
-/** Raised when a deny arrives without a reason. See `PendingDecision`. */
 export class DenyReasonRequiredError extends Error {
   readonly toolCallId: string;
 
@@ -28,7 +18,6 @@ export class DenyReasonRequiredError extends Error {
   }
 }
 
-/** Raised when a pending call cannot be traced back to the message that made it. */
 export class UnresolvedToolCallError extends Error {
   readonly toolCallId: string;
   readonly sourceEventId: string;
@@ -44,20 +33,12 @@ export class UnresolvedToolCallError extends Error {
   }
 }
 
-/**
- * A pending call, resolved to the exact thing the agent wants to do.
- *
- * `argumentsJson` is the verbatim string the model emitted. A paraphrase here
- * would undermine the whole safety claim: if the human approves a summary, they
- * did not approve the action.
- */
 export interface PendingCall {
   toolCallId: string;
   threadId: string;
   toolName: string;
   serverName: string | null;
   argumentsJson: string;
-  /** Pretty-printed for display; falls back to the raw string if it isn't JSON. */
   argumentsPretty: string;
 }
 
@@ -65,20 +46,14 @@ export type PendingDecision =
   | { toolCallId: string; threadId: string; status: 'allow' }
   | { toolCallId: string; threadId: string; status: 'deny'; reason: string };
 
-/**
- * An id-keyed index of `model.message` events.
- *
- * Each pending approval carries only a `sourceEventId`; the tool name and its
- * arguments live on the message that requested the call. Without this index the
- * drawer can only say "a tool wants to run", which is exactly the rubber stamp
- * this project exists to avoid.
- */
 export class EventIndex {
   private readonly messages = new Map<string, TrueForgeApi.ModelMessageEvent>();
 
-  record(event: { type: string; id?: string }): void {
-    if (event.type === 'model.message' && event.id) {
-      this.messages.set(event.id, event as TrueForgeApi.ModelMessageEvent);
+  record(event: IndexableEvent): void {
+    const inner = 'event' in event && event.event ? event.event : event;
+    const { type, id } = inner as { type?: string; id?: string };
+    if (type === 'model.message' && id) {
+      this.messages.set(id, inner as TrueForgeApi.ModelMessageEvent);
     }
   }
 
@@ -95,12 +70,32 @@ function prettyArguments(raw: string): string {
   try {
     return JSON.stringify(JSON.parse(raw), null, 2);
   } catch {
-    // Not JSON. Show it exactly as it came rather than inventing structure.
     return raw;
   }
 }
 
-/** Resolve one `tool.approval_required` event into fully-described pending calls. */
+function unwrapMcpEnvelope(
+  name: string,
+  raw: string,
+): { toolName: string; serverName: string | null; pretty: string } {
+  if (name !== 'call_tool') return { toolName: name, serverName: null, pretty: prettyArguments(raw) };
+  try {
+    const outer = JSON.parse(raw) as {
+      tool_name?: string;
+      mcp_server?: string;
+      input?: unknown;
+    };
+    if (!outer?.tool_name) throw new Error('not an envelope');
+    return {
+      toolName: outer.tool_name,
+      serverName: outer.mcp_server ?? null,
+      pretty: JSON.stringify(outer.input ?? {}, null, 2),
+    };
+  } catch {
+    return { toolName: name, serverName: null, pretty: prettyArguments(raw) };
+  }
+}
+
 export function resolvePendingCalls(
   event: TrueForgeApi.ToolApprovalRequiredEvent,
   index: EventIndex,
@@ -111,24 +106,20 @@ export function resolvePendingCalls(
     if (!call) throw new UnresolvedToolCallError(ref.id, ref.sourceEventId);
 
     const raw = call.function.arguments ?? '';
+    const unwrapped = unwrapMcpEnvelope(call.function.name, raw);
     return {
       toolCallId: ref.id,
       threadId: event.threadId,
-      toolName: call.function.name,
-      serverName: call.toolInfo?.type === 'mcp' ? call.toolInfo.serverName : null,
+      toolName: unwrapped.toolName,
+      serverName:
+        unwrapped.serverName ??
+        (call.toolInfo?.type === 'mcp' ? call.toolInfo.serverName : null),
       argumentsJson: raw,
-      argumentsPretty: prettyArguments(raw),
+      argumentsPretty: unwrapped.pretty,
     };
   });
 }
 
-/**
- * Did this turn end paused on an approval?
- *
- * `output === null` is the signal that the turn ended paused rather than
- * completing — a turn that produced a final message is done, even if it also
- * carries other required actions.
- */
 export function pausedApprovals(
   state: TrueForgeApi.TurnState,
 ): TrueForgeApi.ToolApprovalRequiredEvent[] {
@@ -139,14 +130,6 @@ export function pausedApprovals(
   );
 }
 
-/**
- * Build the resume input.
- *
- * One `user.tool_approval` per pending call — never one decision batched across
- * several, because each call is a separate thing the human is agreeing to.
- * A turn's input must also be homogeneous: these items can never travel
- * alongside a `user.message`.
- */
 export function buildApprovalResume(decisions: readonly PendingDecision[]): TrueForgeApi.TurnInputItem[] {
   if (decisions.length === 0) {
     throw new Error('Refusing to resume with no decisions; that would silently re-run the turn.');

@@ -1,17 +1,6 @@
 import { parseCaseFile, type CaseFile } from '@confirm-deny/casefile';
 import { ZodError } from 'zod';
 
-/**
- * The sandbox artifact boundary.
- *
- * The agent announces what it produced in a fenced ```sandbox_artifacts block;
- * we pull each file out with the download endpoint and validate it HERE, on our
- * side, before anything renders it.
- *
- * That placement is the whole point: a malformed case file becomes a visible
- * error with a message, not a half-empty pane that looks like a verdict.
- */
-
 export interface SandboxArtifact {
   label: string;
   path: string;
@@ -20,12 +9,6 @@ export interface SandboxArtifact {
 const FENCE = /```sandbox_artifacts\s*\n([\s\S]*?)```/g;
 const LINK = /\[([^\]]+)\]\(([^)]+)\)/g;
 
-/**
- * Parse the artifact announcements out of an assistant message.
- *
- * Tolerant by design — several blocks, odd spacing, links wrapped across lines.
- * The agent is a language model; the parser should not be the brittle part.
- */
 export function parseSandboxArtifacts(content: string): SandboxArtifact[] {
   const found: SandboxArtifact[] = [];
   const seen = new Set<string>();
@@ -44,7 +27,6 @@ export function parseSandboxArtifacts(content: string): SandboxArtifact[] {
   return found;
 }
 
-/** Pick the case file out of a set of announced artifacts. */
 export function findCaseFilePath(artifacts: readonly SandboxArtifact[]): string | null {
   const byName = artifacts.find((a) => a.path.endsWith('casefile.json'));
   if (byName) return byName.path;
@@ -69,12 +51,6 @@ export class CaseFileInvalidError extends Error {
   }
 }
 
-/**
- * Validate a downloaded case file.
- *
- * Deliberately loud. A case file that fails here is a bug we can see; a case
- * file waved through is a wrong verdict posted under a maintainer's name.
- */
 export function validateCaseFile(path: string, raw: string): CaseFile {
   let parsed: unknown;
   try {

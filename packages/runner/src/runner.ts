@@ -3,6 +3,7 @@ import type { CaseFile } from '@confirm-deny/casefile';
 import { buildAgentSpec, triageMessage, CRITICAL_WRITE_TOOLS, APPROVAL_POLICY } from './agent-spec.ts';
 import {
   EventIndex,
+  UnresolvedToolCallError,
   buildApprovalResume,
   pausedApprovals,
   resolvePendingCalls,
@@ -10,21 +11,16 @@ import {
   type PendingDecision,
 } from './gate.ts';
 import { auditPolicy, assertGated, type McpToolEntry, type PolicyReport } from './policy.ts';
-import { findCaseFilePath, parseSandboxArtifacts, validateCaseFile } from './artifacts.ts';
+import {
+  findCaseFilePath,
+  parseSandboxArtifacts,
+  validateCaseFile,
+  CaseFileInvalidError,
+} from './artifacts.ts';
 import type { TriageEvent, TriageEventSink } from './events.ts';
 
-/**
- * Session lifecycle and stream fan-out.
- *
- * The TrueForge key lives here and only here. The browser talks to our route
- * handlers, never to the harness — which is the same boundary that keeps model
- * and MCP credentials out of the sandbox, applied one layer further out.
- */
-
 export interface RunnerOptions {
-  /** TrueForge API token. Stays server-side; it never reaches the browser. */
   token: string;
-  /** e.g. http://localhost:3000 for `npx @truefoundry/trueforge`. */
   baseUrl: string;
   model: string;
   githubServerName?: string;
@@ -32,9 +28,7 @@ export interface RunnerOptions {
 
 export interface TurnOutcome {
   turnId: string;
-  /** Non-empty when the turn ended paused on the gate. */
   pending: PendingCall[];
-  /** Present once the agent has announced and written a valid case file. */
   casefile: CaseFile | null;
   finalText: string | null;
 }
@@ -42,6 +36,7 @@ export interface TurnOutcome {
 export class TriageRunner {
   private readonly client: TrueForge;
   private readonly index = new EventIndex();
+  private casefilePath: string | null = null;
 
   private readonly options: RunnerOptions;
 
@@ -50,14 +45,6 @@ export class TriageRunner {
     this.client = new TrueForge({ baseUrl: options.baseUrl, token: options.token });
   }
 
-  /**
-   * Preflight: resolve the approval policy against the LIVE tool list.
-   *
-   * Literal names in `requireApprovalForTools` are never validated by the
-   * harness, and the list replaces the default rather than extending it. So a
-   * stale name gates nothing and says nothing. This turns that silent failure
-   * into a refusal to start.
-   */
   async auditApprovalPolicy(): Promise<PolicyReport> {
     const serverName = this.options.githubServerName ?? 'github';
     const response = await this.client.mcpServers.listTools(serverName);
@@ -68,7 +55,6 @@ export class TriageRunner {
     return report;
   }
 
-  /** Open a session with the agent spec inline — no pre-registration needed. */
   async startSession(): Promise<string> {
     const session = await this.client.sessions.create({
       agent: {
@@ -83,18 +69,11 @@ export class TriageRunner {
     return session.data.id;
   }
 
-  /** Begin triage of one issue. Returns when the turn ends — done or paused. */
   async triage(sessionId: string, issueUrl: string, emit: TriageEventSink): Promise<TurnOutcome> {
     await emit({ type: 'session.started', sessionId, issueUrl });
     return this.runTurn(sessionId, { input: [triageMessage(issueUrl)] }, emit);
   }
 
-  /**
-   * Resume a paused turn with the operator's decisions.
-   *
-   * This is a NEW turn. The paused one is over — it reached a terminal state
-   * with no output. Nothing is "unpaused".
-   */
   async resolveGate(
     sessionId: string,
     decisions: readonly PendingDecision[],
@@ -108,16 +87,9 @@ export class TriageRunner {
         ...(d.status === 'deny' ? { reason: d.reason } : {}),
       });
     }
-    // Throws if a deny arrived without a reason — enforced before the wire.
     return this.runTurn(sessionId, { input: buildApprovalResume(decisions) }, emit);
   }
 
-  /**
-   * Re-attach to a turn already in flight.
-   *
-   * A reload must never re-run the triage: that would burn a sandbox, re-clone
-   * the repo, and — worse — could re-open a gate the operator already answered.
-   */
   async reattach(sessionId: string, turnId: string, emit: TriageEventSink): Promise<TurnOutcome> {
     const stream = await this.client.sessions.subscribeToTurn(sessionId, turnId);
     return this.consume(sessionId, turnId, stream, emit);
@@ -142,15 +114,17 @@ export class TriageRunner {
     let pending: PendingCall[] = [];
     let finalText: string | null = null;
     let casefile: CaseFile | null = null;
-    let casefilePath: string | null = null;
 
     for await (const raw of stream) {
       const event = raw as { type: string } & Record<string, unknown>;
       this.index.record(event as never);
 
+      const carried = event['turnId'] ?? event['turn_id'];
+      if (typeof carried === 'string' && carried) turnId = carried;
+
       switch (event.type) {
         case 'turn.created': {
-          turnId = String(event['id'] ?? turnId);
+          if (!turnId) turnId = String(event['id'] ?? '');
           await emit({ type: 'turn.started', turnId });
           break;
         }
@@ -177,9 +151,11 @@ export class TriageRunner {
             finalText = text;
             await emit({ type: 'agent.said', threadId, text });
 
-            for (const artifact of parseSandboxArtifacts(text)) {
+            const artifacts = parseSandboxArtifacts(text);
+            for (const artifact of artifacts) {
               await emit({ type: 'artifact.available', ...artifact });
             }
+            this.casefilePath = findCaseFilePath(artifacts) ?? this.casefilePath;
           }
 
           for (const call of (event['toolCalls'] as ToolCallish[] | undefined) ?? []) {
@@ -205,9 +181,13 @@ export class TriageRunner {
         }
 
         case 'tool.approval_required': {
-          // Resolve now, while the stream that produced the source message is
-          // still being read — the operator must see the real arguments.
-          pending = resolvePendingCalls(event as never, this.index);
+          try {
+            pending = resolvePendingCalls(event as never, this.index);
+          } catch (error) {
+            if (!(error instanceof UnresolvedToolCallError)) throw error;
+            await this.backfillIndex(sessionId, turnId);
+            pending = resolvePendingCalls(event as never, this.index);
+          }
           await emit({ type: 'gate.opened', turnId, calls: pending });
           break;
         }
@@ -216,13 +196,10 @@ export class TriageRunner {
           const state = event['state'] as Parameters<typeof pausedApprovals>[0];
           const paused = pausedApprovals(state).length > 0;
 
-          if (!paused && finalText) {
-            const path = findCaseFilePath(parseSandboxArtifacts(finalText));
-            if (path) {
-              casefilePath = path;
-              casefile = await this.pullCaseFile(sessionId, turnId, path);
-              await emit({ type: 'casefile.ready', casefile, path });
-            }
+          if (!paused && this.casefilePath) {
+            const path = this.casefilePath;
+            casefile = await this.pullCaseFile(sessionId, turnId, path);
+            await emit({ type: 'casefile.ready', casefile, path });
           }
 
           await emit({ type: 'turn.finished', turnId, paused });
@@ -231,13 +208,45 @@ export class TriageRunner {
       }
     }
 
-    return { turnId, pending, casefile, finalText: casefilePath ? finalText : finalText };
+    return { turnId, pending, casefile, finalText };
   }
 
-  /** Pull an artifact out of the sandbox and validate it at the boundary. */
+  private async backfillIndex(sessionId: string, turnId: string): Promise<void> {
+    for (const id of await this.turnCandidates(sessionId, turnId)) {
+      try {
+        const page = await this.client.sessions.listTurnEvents(sessionId, id);
+        for await (const event of page) this.index.record(event as never);
+        return;
+      } catch {
+      }
+    }
+  }
+
+  private async turnCandidates(sessionId: string, turnId: string): Promise<string[]> {
+    const candidates = turnId ? [turnId] : [];
+    try {
+      const turns = await this.client.sessions.listTurns(sessionId);
+      for await (const turn of turns) {
+        const id = (turn as { id?: string }).id;
+        if (id && !candidates.includes(id)) candidates.push(id);
+      }
+    } catch {
+    }
+    return candidates;
+  }
+
   async pullCaseFile(sessionId: string, turnId: string, path: string): Promise<CaseFile> {
-    const raw = await this.downloadText(sessionId, turnId, path);
-    return validateCaseFile(path, raw);
+    let lastError: unknown = null;
+    for (const id of await this.turnCandidates(sessionId, turnId)) {
+      try {
+        const raw = await this.downloadText(sessionId, id, path);
+        return validateCaseFile(path, raw);
+      } catch (error) {
+        if (error instanceof CaseFileInvalidError) throw error;
+        lastError = error;
+      }
+    }
+    throw lastError ?? new Error(`Could not download ${path} from any turn in ${sessionId}.`);
   }
 
   async downloadText(sessionId: string, turnId: string, path: string): Promise<string> {
@@ -252,7 +261,6 @@ interface ToolCallish {
   toolInfo?: { type: string; serverName: string };
 }
 
-/** Message content is either a string or content parts; flatten to text. */
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';

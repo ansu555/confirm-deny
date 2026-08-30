@@ -1,20 +1,6 @@
 import { z } from 'zod';
 import { VERDICTS, deriveConfidence, type Verdict } from './verdict.ts';
 
-/**
- * The case file — the agent's output contract.
- *
- * THE DESIGN RULE: observed evidence and inference never share a field.
- * Everything the sandbox actually produced lives under `evidence`; everything
- * the model concluded lives under `analysis`. A maintainer must be able to read
- * only `evidence` and reach their own verdict.
- *
- * This schema is validated on OUR side, at the boundary, after pulling the file
- * out of the sandbox. A malformed case file is a visible error, never a silent
- * half-rendered one.
- */
-
-/** Captured output is truncated by capture.sh at this size, per stream. */
 export const CAPTURE_LIMIT_BYTES = 64_000;
 
 const Environment = z.object({
@@ -28,7 +14,6 @@ const ReproScript = z.object({
   contents: z.string(),
 });
 
-/** Produced by the sandbox. Never by the model. */
 export const Evidence = z.object({
   environment: Environment,
   reproScript: ReproScript,
@@ -37,11 +22,9 @@ export const Evidence = z.object({
   stdout: z.string(),
   stderr: z.string(),
   durationMs: z.number().int().nonnegative(),
-  /** True when capture.sh hit CAPTURE_LIMIT_BYTES and cut the stream. */
   truncated: z.boolean().default(false),
 });
 
-/** The model's reading. Clearly marked as such, everywhere it surfaces. */
 export const Analysis = z.object({
   summary: z.string().min(1),
   firstBadVersion: z.string().nullable(),
@@ -49,15 +32,8 @@ export const Analysis = z.object({
   duplicateOf: z.array(
     z.object({ number: z.number().int(), url: z.string(), why: z.string().min(1) }),
   ),
-  /**
-   * What the agent could NOT confirm. The honesty valve, and the field that
-   * makes a human reach for Deny. Most agents present inference as fact; this
-   * one has to enumerate its own gaps.
-   */
   unverifiedClaims: z.array(z.string()),
-  /** NEEDS_INFO only: one specific, answerable question. Never "please provide more detail". */
   openQuestion: z.string().nullable(),
-  /** NOT_A_BUG only: the doc or test that defines the behaviour. */
   documentedBehaviourRef: z.string().nullable(),
 });
 
@@ -70,11 +46,9 @@ const Issue = z.object({
 const Revision = z.object({
   deniedReason: z.string().min(1),
   revisedAt: z.string(),
-  /** The draft that was denied, kept so the Desk can diff it. */
   previousDraft: z.string(),
 });
 
-/** What the agent writes into the sandbox. Note: no `confidence` — see below. */
 export const CaseFileInput = z.object({
   issue: Issue,
   verdict: z.enum(VERDICTS),
@@ -85,7 +59,6 @@ export const CaseFileInput = z.object({
   revisions: z.array(Revision).default([]),
 });
 
-/** The validated, enriched case file the rest of the system passes around. */
 export const CaseFile = CaseFileInput.extend({
   confidence: z.enum(['high', 'medium', 'low']),
 });
@@ -95,13 +68,6 @@ export type CaseFile = z.infer<typeof CaseFile>;
 export type Evidence = z.infer<typeof Evidence>;
 export type Analysis = z.infer<typeof Analysis>;
 
-/**
- * The honesty rules, executable.
- *
- * Each verdict may only be reached when the evidence that would justify it is
- * present. A verdict that cannot show its evidence fails validation — which
- * means it fails the build, and it never reaches a maintainer.
- */
 export function verdictViolations(cf: CaseFileInput): string[] {
   const problems: string[] = [];
   const { verdict, evidence, analysis } = cf;
@@ -159,19 +125,12 @@ export function verdictViolations(cf: CaseFileInput): string[] {
   return problems;
 }
 
-/** `CaseFileInput` plus the honesty rules. This is what the boundary uses. */
 export const ValidatedCaseFileInput = CaseFileInput.superRefine((cf, ctx) => {
   for (const message of verdictViolations(cf)) {
     ctx.addIssue({ code: 'custom', message });
   }
 });
 
-/**
- * Parse and enrich a case file pulled out of the sandbox.
- *
- * Throws `ZodError` on anything malformed — deliberately loud. Callers render
- * the failure; they never render a half-empty case file.
- */
 export function parseCaseFile(raw: unknown): CaseFile {
   const input = ValidatedCaseFileInput.parse(raw);
   return {
