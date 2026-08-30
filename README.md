@@ -658,11 +658,22 @@ silently wrong on the branch nobody walks.
   what the harness is doing for us.
 - **The store is a JSON file** with an atomic write. Deliberate, not an oversight: TrueForge's
   session is the source of truth, and anything lost is recoverable by re-reading it.
-- **Model availability, not model capability, was the binding constraint.** The free Gemini
-  tier returned `429` after roughly one run; `openrouter/glm-5-3-flash` is what the verified
-  runs used. Notably, the OpenRouter SSE stream once blamed for an
-  `Unexpected end of JSON input` parses cleanly on TrueForge v0.1.4 — that was never
-  TrueForge's problem.
+- **Model availability, not model capability, was the binding constraint**, and by the end of
+  the build all four registered models were blocked in different ways:
+  `openrouter/glm-5-3-flash` completes the whole playbook well but throttles to roughly one
+  call a minute after sustained use; both Gemini 3.x models hit TrueForge's
+  `thought_signature` bug and stop dead after exactly one tool call (`status: null`,
+  `error: null`, no timeout — see [SETUP.md](SETUP.md)); `openrouter/gpt-5-nano` stalls
+  partway through. The verified runs are GLM's. Notably, the OpenRouter SSE stream once blamed
+  for an `Unexpected end of JSON input` parses cleanly on v0.1.4 — that was never TrueForge's
+  problem.
+- **One step is proven only in its parts.** After a denial the agent must append a
+  `revisions[]` entry with `deniedReason`, `revisedAt` and `previousDraft`. A live run got as
+  far as the revision and the schema rejected it, because the skill named two of the three
+  fields and the example shipped an empty array — now fixed in the skill, the example, the
+  instructions, and a CI test that parses the example. Every stage around it is verified live;
+  the corrected revision itself is covered by tests rather than by a completed run, because
+  the rate limits above outlasted the attempts. Said plainly rather than glossed.
 - **Public repositories only**, permanently. The sandbox holds no credentials and there is no
   supported way to give it any.
 - **Two live-stack drivers ship in `scripts/`.** `e2e.ts` walks the whole arc — preflight,
