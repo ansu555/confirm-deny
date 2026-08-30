@@ -13,7 +13,7 @@ It turns an unverified issue into a **schema-validated case file** — or a defe
 <br/>
 
 [![CI](https://github.com/ansu555/confirm-deny/actions/workflows/ci.yml/badge.svg)](https://github.com/ansu555/confirm-deny/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-64%20passing-3fb950?style=flat-square)](#tests)
+[![Tests](https://img.shields.io/badge/tests-68%20passing-3fb950?style=flat-square)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522.14-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![Built on TrueForge](https://img.shields.io/badge/built%20on-TrueForge-6e56cf?style=flat-square)](https://github.com/truefoundry/trueforge)
@@ -457,7 +457,7 @@ check is one line, and it is the difference between a documented hazard and an e
 | `register-agent.ts` | Publish the agent to TrueForge so the stock chat UI can run it. |
 | `scripts/e2e.ts` | Drive the full arc programmatically against a live stack, including a denial and a revision. |
 | `scripts/verdict-matrix.ts` | Triage all four seeded issues and check each verdict; posts nothing. |
-| `pnpm test` | 64 tests. |
+| `pnpm test` | 68 tests. |
 | `pnpm typecheck` | Project-wide `tsc -b`. |
 
 ---
@@ -507,7 +507,7 @@ Every feature is here because **removing it makes the job impossible** — not t
 ## Tests
 
 ```bash
-pnpm test        # 64 passing
+pnpm test        # 68 passing
 ```
 
 The one worth pointing at is the **gate regression test**: a fixture of a paused turn asserting
@@ -621,7 +621,7 @@ each green on CI** — typecheck plus the test suite. Nothing was committed stra
 | [#10](https://github.com/ansu555/confirm-deny/pull/10) | Verify the whole arc end to end | — |
 | [#11](https://github.com/ansu555/confirm-deny/pull/11) | Say which seeded verdicts are verified and which are not | — |
 | [#12](https://github.com/ansu555/confirm-deny/pull/12) | Retract the rate-limit claim: it was never measured | — |
-| [#13](https://github.com/ansu555/confirm-deny/pull/13) | Read the `.env` we tell people to write | 0 findings |
+| [#13](https://github.com/ansu555/confirm-deny/pull/13) | Read the `.env` we tell people to write | **2 Correctness findings — fixed, re-reviewed clean** |
 
 ### What the review actually caught
 
@@ -639,6 +639,13 @@ anti-fabrication agent.** Then the review caught the fix introducing a schema co
 
 Three real defects, in a chain, in the exact place the project claims to be most careful. That
 is a better argument for code review than any clean run.
+
+**PR #13 — [Correctness] The loader missed the file it was written to read.** The `.env` path
+resolved against `process.cwd()`, so running the CLI from `packages/runner` looked for
+`packages/runner/.env` and silently found nothing — the same class of failure the PR existed to
+fix, reintroduced one directory down. The second: an unquoted `TOKEN=abc # note` loaded the
+comment as part of the value, and the README's own setup block is written that way. Both fixed,
+both covered by tests.
 
 **PR #9 — [High] Approval accepted on a rejected case file.** `resolveGate` would let a caller
 approve a tool call whose case file the schema had already refused, so the guarantee held only

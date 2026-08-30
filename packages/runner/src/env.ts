@@ -1,11 +1,14 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
-const unquote = (value: string): string => {
-  const quoted =
-    value.length >= 2 &&
-    ((value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'")));
-  return quoted ? value.slice(1, -1) : value;
+const isQuoted = (value: string): boolean =>
+  value.length >= 2 &&
+  ((value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'")));
+
+const stripComment = (value: string): string => {
+  const comment = /\s+#/.exec(value);
+  return comment ? value.slice(0, comment.index).trimEnd() : value;
 };
 
 export function parseDotEnv(text: string): Record<string, string> {
@@ -15,18 +18,35 @@ export function parseDotEnv(text: string): Record<string, string> {
     if (trimmed === '' || trimmed.startsWith('#')) continue;
     const eq = trimmed.indexOf('=');
     if (eq <= 0) continue;
-    out[trimmed.slice(0, eq).trim()] = unquote(trimmed.slice(eq + 1).trim());
+    const raw = trimmed.slice(eq + 1).trim();
+    out[trimmed.slice(0, eq).trim()] = isQuoted(raw) ? raw.slice(1, -1) : stripComment(raw);
   }
   return out;
 }
 
-export function loadDotEnv(path = '.env'): string[] {
+export function findDotEnv(from: string): string | null {
+  let dir = from;
+  for (;;) {
+    const candidate = join(dir, '.env');
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+export function loadDotEnv(path?: string): string[] {
+  const resolved =
+    path ?? findDotEnv(process.cwd()) ?? findDotEnv(import.meta.dirname) ?? null;
+  if (resolved === null) return [];
+
   let text: string;
   try {
-    text = readFileSync(path, 'utf8');
+    text = readFileSync(resolved, 'utf8');
   } catch {
     return [];
   }
+
   const applied: string[] = [];
   for (const [key, value] of Object.entries(parseDotEnv(text))) {
     if (process.env[key] !== undefined) continue;
