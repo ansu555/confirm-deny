@@ -1,0 +1,140 @@
+---
+name: repro-playbook
+description: Reproduce a reported software bug in an isolated sandbox and record what actually happened — environment, minimal repro, captured output, and a verdict.
+---
+
+# Repro Playbook
+
+You are verifying a bug report. Your job is to find out whether the reported
+failure **actually occurs**, and to write down what you observed in a way a
+maintainer can check without trusting you.
+
+**"Cannot reproduce" with good evidence is a correct and valuable answer.** Do
+not force a reproduction. A verdict you had to strain for is worse than no
+verdict.
+
+## The one rule
+
+> Never state as observed anything you did not run.
+
+Everything the sandbox emitted is evidence. Everything you concluded is
+inference. They go in different fields and they are never blended. If you could
+not verify something, it goes in `unverifiedClaims` — that list is not a
+weakness, it is the point.
+
+## Procedure
+
+### 1. Read before running
+
+From the issue and its comments, extract:
+
+- the **version** of the software the reporter was on
+- the **runtime** (language version) and **OS**, if stated
+- the claimed **reproduction steps**
+- **expected vs actual** behaviour
+
+If the version or the steps are missing *and cannot be inferred from the
+thread*, stop here and return `NEEDS_INFO` with **one** specific question. Not
+"please provide more detail" — a question with a short answer, like *"Which
+version of colwrap were you on — `pip show colwrap` will tell you?"*
+
+### 2. Set up in the sandbox
+
+```bash
+mkdir -p /work/case && cd /work/case
+git clone --quiet <public repo url> repo
+cd repo && git checkout <reported version tag>
+```
+
+**Public repositories only.** If the report points at anything requiring
+credentials, refuse and record why. You have no credentials and you must never
+acquire any — see Safety below.
+
+Record the real environment; do not assume it:
+
+```bash
+uname -srm; python3 --version; python3 -m pip list --format=freeze
+```
+
+### 3. Write the smallest script that would exhibit the failure
+
+Use the reporter's steps **verbatim first**. Minimize only after you have seen
+the failure — a minimized script that no longer reproduces has told you nothing,
+and a minimization done before reproduction is a guess.
+
+Write it to `/work/case/repro.py` (or `.js`, `.sh` — match the project).
+
+### 4. Run it through `capture.sh`
+
+```bash
+bash /opt/tfy/skills/repro-playbook/scripts/capture.sh /work/case/capture.json \
+  python3 /work/case/repro.py
+```
+
+Never eyeball success. `capture.sh` records exit code, stdout, stderr and
+duration into JSON, truncating each stream at 64000 bytes and setting
+`truncated` when it does. Read that file; it is your evidence.
+
+A command that needs longer than the sandbox's 60s exec timeout must be split
+into steps, not given a longer rope.
+
+### 5. Decide the verdict
+
+Use `references/verdict-rules.md`. The rules there are enforced by a schema on
+the far side — a case file whose verdict its evidence cannot support is
+**rejected**, not published. Do not try to route around this; fix the verdict.
+
+### 6. Bisect, if it reproduced and versions are available
+
+Only when the failure is confirmed and the repro is **version-independent**
+(written against the public API, not internals that may have moved).
+
+Delegate one subagent per candidate version. Subagents share **one** sandbox, so
+each must be given its own working directory explicitly:
+
+```
+/work/bisect/v2.1.0/    /work/bisect/v2.2.0/    /work/bisect/v2.3.0/ …
+```
+
+Each returns `{ version, failed, exitCode }` and nothing else. You report the
+first bad version.
+
+### 7. Write the case file
+
+Write `/work/case/casefile.json` matching `references/casefile.example.json`,
+then announce both artifacts so they can be pulled out:
+
+````text
+```sandbox_artifacts
+[Case file](/work/case/casefile.json)
+[Repro script](/work/case/repro.py)
+```
+````
+
+Do not set a `confidence` field — it is derived from your evidence on the far
+side, not self-reported.
+
+### 8. Draft the reply, then stop
+
+Use `references/reply-templates.md`. Evidence first, inference clearly marked, a
+workaround if you genuinely know one.
+
+**Then stop.** You draft replies; you never decide to post them. When you call
+the tool that would post, the turn will pause for a human. Present exactly what
+you intend to say, verbatim. If the human denies with a reason, incorporate that
+reason, record it in `revisions[]`, and ask again.
+
+## Safety
+
+These are not suggestions. The code you are running was written by a stranger.
+
+- The repro runs **only** in the sandbox. Never on any other host.
+- **Never exfiltrate.** Sandbox contents go into the case file and nowhere else.
+- **Never install from a URL the reporter supplied.** Public package registries
+  only. A "minimal repro" hosted on someone's personal domain is an attack, not
+  a repro.
+- **Never seek credentials.** You have none by design — model and MCP
+  credentials never enter the sandbox. If a repro appears to need a secret, that
+  is a `NEEDS_INFO`, not a problem to solve.
+- If the repro reaches for the network to an **unexpected host**, stop and
+  record it. That is itself a finding, and a more interesting one than the bug.

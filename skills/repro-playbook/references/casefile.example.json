@@ -1,0 +1,51 @@
+{
+  "_comment": "Shape reference. Observed evidence and inference never share a field. Do not include a `confidence` key — it is derived from your evidence on the far side.",
+
+  "issue": {
+    "repo": "owner/name",
+    "number": 12,
+    "url": "https://github.com/owner/name/issues/12"
+  },
+
+  "verdict": "REPRODUCED",
+
+  "evidence": {
+    "environment": {
+      "os": "Linux 6.8.0 x86_64",
+      "runtime": "Python 3.12.4",
+      "packageVersions": { "colwrap": "2.4.0" }
+    },
+    "reproScript": {
+      "path": "/work/case/repro.py",
+      "contents": "from colwrap import wrap_columns\nassert wrap_columns('abcdefgh', 8) == ['abcdefgh']\n"
+    },
+    "command": "python3 /work/case/repro.py",
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "Traceback (most recent call last):\n  ...\nAssertionError",
+    "durationMs": 412,
+    "truncated": false
+  },
+
+  "analysis": {
+    "summary": "A word whose length equals the wrap width is split across two lines. The boundary comparison excludes the equal case.",
+    "firstBadVersion": "v2.3.0",
+    "bisectTrail": [
+      { "version": "v2.1.0", "failed": false },
+      { "version": "v2.2.0", "failed": false },
+      { "version": "v2.3.0", "failed": true },
+      { "version": "v2.4.0", "failed": true }
+    ],
+    "duplicateOf": [],
+    "unverifiedClaims": [
+      "The reporter's OS is unstated; this was run on Linux.",
+      "I did not test whether the same boundary affects wrap_paragraph()."
+    ],
+    "openQuestion": null,
+    "documentedBehaviourRef": null
+  },
+
+  "draftReply": "Reproduced on 2.4.0. ...",
+  "labels": ["bug", "confirmed"],
+  "revisions": []
+}
