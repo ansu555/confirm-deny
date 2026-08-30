@@ -161,7 +161,10 @@ Two things that will stop you:
 > sandbox provider is configured. The run looks entirely successful while doing the one thing
 > this project promises never to do.
 >
-> Check the sandbox id in the CLI output starts with `v1:daytona:`.
+> The runner enforces this: it asserts the sandbox id carries a remote-provider prefix
+> (`v1:daytona:`) and aborts with `HostExecutionError` otherwise. Set
+> `CONFIRM_DENY_SANDBOX_PREFIX` if your provider issues ids in another form. You do not
+> have to check it by eye — a documented hazard is not a control.
 
 ## 5. Add the GitHub MCP connector
 
