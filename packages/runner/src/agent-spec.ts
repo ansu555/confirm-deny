@@ -66,7 +66,7 @@ export function buildAgentSpec(options: AgentSpecOptions): TrueForgeApi.AgentSpe
         largeToolResponse: { enabled: true },
       },
     
-      iterationLimit: 60,
+      iterationLimit: Number(process.env['CONFIRM_DENY_ITERATION_LIMIT'] ?? 200),
     },
 
   };
