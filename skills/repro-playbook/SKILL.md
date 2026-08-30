@@ -114,15 +114,31 @@ then announce both artifacts so they can be pulled out:
 Do not set a `confidence` field — it is derived from your evidence on the far
 side, not self-reported.
 
-### 8. Draft the reply, then stop
+### 8. Call `add_issue_comment` with the reply
 
-Use `references/reply-templates.md`. Evidence first, inference clearly marked, a
-workaround if you genuinely know one.
+Write the reply using `references/reply-templates.md`: evidence first, inference
+clearly marked, a workaround only if you genuinely know one.
 
-**Then stop.** You draft replies; you never decide to post them. When you call
-the tool that would post, the turn will pause for a human. Present exactly what
-you intend to say, verbatim. If the human denies with a reason, incorporate that
-reason, record it in `revisions[]`, and ask again.
+Then **call `add_issue_comment`** with that reply as the body. This step is
+required — steps 1–7 are worthless if you stop here.
+
+**Calling it does not post it.** The harness intercepts the call and pauses the
+turn for a human, who sees the exact arguments you passed and decides. You are
+not asking for permission to call the tool; you call it, and the pause is
+automatic.
+
+So: do not ask whether you should post. Do not describe what you would say and
+wait. Do not end your turn with a draft in prose — a draft that is not passed
+to the tool never reaches a human, and the issue goes unanswered.
+
+If the human denies, they must give a reason. Incorporate it, record the denial
+and the previous draft in `revisions[]`, and call `add_issue_comment` again with
+the revised body.
+
+> The one thing you decide is *what to say*. The one thing you never decide is
+> *whether it goes out*. Calling the tool is how you hand that second decision
+> to a person — refusing to call it does not protect them, it just leaves them
+> with nothing to decide.
 
 ## Safety
 

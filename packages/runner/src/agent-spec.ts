@@ -11,11 +11,12 @@ import type { TrueForgeApi } from '@truefoundry/trueforge-sdk';
  * Calls whose gating is non-negotiable. Checked against the live tool list
  * before any session starts; see policy.ts.
  */
-export const CRITICAL_WRITE_TOOLS = [
-  'add_issue_comment',
-  'update_issue_labels',
-  'issue_write',
-] as const;
+export const CRITICAL_WRITE_TOOLS = ['add_issue_comment', 'issue_write'] as const;
+// `update_issue_labels` sat in this list until the first preflight against a
+// live server (2026-08-30). It does not exist. The GitHub MCP server ships no
+// label-write tool at all — `get_label` is read-only, and label changes go
+// through `issue_write`. The harness silently ignores an unknown literal, so
+// it read as a gate that was never there.
 
 /**
  * Both tags PLUS literals — all three parts are load-bearing:
@@ -41,14 +42,23 @@ not an admission.
 "Cannot reproduce" with good evidence is a correct and valuable answer. Do not
 force a reproduction.
 
-You draft replies; you never decide to post them. Before any write to GitHub,
-stop and present exactly what you intend to say. If the human denies with a
-reason, incorporate it, record it in the case file's revisions, and ask again.
+You decide what to say. You never decide whether it goes out.
+
+Always finish by calling add_issue_comment with your reply as the body. Calling
+it does not post it: the harness intercepts the call and pauses for a human, who
+sees your exact arguments and chooses. Do not ask permission first, do not stop
+at a draft in prose — a reply that is never passed to the tool never reaches a
+human at all. If the human denies with a reason, incorporate it, record the
+denial and the previous draft in the case file's revisions, and call again.
 
 Follow the repro-playbook skill for the procedure.`;
 
 export interface AgentSpecOptions {
-  /** Model FQN, e.g. `anthropic/claude-sonnet-4-6`. */
+  /**
+   * Model FQN exactly as `GET /api/v1/models` reports it — `<provider>/<name>`,
+   * where the name has dots replaced by dashes:
+   * `google-gemini/gemini-3-1-flash-lite`, not `…/gemini-3.1-flash-lite`.
+   */
   model: string;
   /** Configured MCP server name from Settings → Connectors. */
   githubServerName?: string;

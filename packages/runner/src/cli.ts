@@ -130,9 +130,12 @@ async function main(): Promise<void> {
   const issueUrl = command === 'triage' ? (argument ?? usage(2)) : '';
 
   const runner = new TriageRunner({
-    baseUrl: env('TRUEFORGE_BASE_URL', 'http://localhost:3000'),
-    token: env('TRUEFORGE_TOKEN'),
-    model: env('CONFIRM_DENY_MODEL', 'anthropic/claude-sonnet-4-6'),
+    baseUrl: env('TRUEFORGE_BASE_URL', 'http://localhost:8790'),
+    // Local (standalone) TrueForge logs `Auth is disabled; browser login is
+    // off` and rejects nothing, so an empty token is the correct value there.
+    // A hosted deployment with OIDC does need one.
+    token: process.env['TRUEFORGE_TOKEN'] ?? '',
+    model: env('CONFIRM_DENY_MODEL', 'google-gemini/gemini-3-1-flash-lite'),
     githubServerName: process.env['GITHUB_MCP_SERVER'] ?? 'github',
   });
 
