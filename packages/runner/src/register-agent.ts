@@ -8,15 +8,15 @@ const name = process.env['CONFIRM_DENY_AGENT'] ?? 'confirm-deny';
 
 const manifest = buildAgentSpec({ model, githubServerName });
 
-async function send(method: 'POST' | 'PUT', url: string): Promise<Response> {
+async function send(method: 'POST' | 'PUT', url: string, body: unknown): Promise<Response> {
   return fetch(url, {
     method,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, manifest }),
+    body: JSON.stringify(body),
   });
 }
 
-const created = await send('POST', `${baseUrl}/api/v1/agents`);
+const created = await send('POST', `${baseUrl}/api/v1/agents`, { name, manifest });
 
 if (created.ok) {
   const body = (await created.json()) as { data: { id: string } };
@@ -27,7 +27,7 @@ if (created.ok) {
   const existing = agents.data.find((a) => a.name === name);
   if (!existing) throw new Error(`agent "${name}" conflicts but is not listed`);
 
-  const updated = await send('PUT', `${baseUrl}/api/v1/agents/${existing.id}`);
+  const updated = await send('PUT', `${baseUrl}/api/v1/agents/${existing.id}`, { manifest });
   if (!updated.ok) throw new Error(`update failed: ${updated.status} ${await updated.text()}`);
   console.log(`updated agent "${name}" (${existing.id})`);
 } else {

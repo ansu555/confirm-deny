@@ -40,19 +40,64 @@ export interface TurnOutcome {
   turnId: string;
   pending: PendingCall[];
   casefile: CaseFile | null;
+  casefileError: CaseFileRejection | null;
   finalText: string | null;
+}
+
+export type CaseFileRejection = CaseFileInvalidError | MissingCaseFileError;
+
+interface SessionState {
+  casefilePath: string | null;
+  rejection: CaseFileRejection | null;
+}
+
+export class ApprovalOnRejectedCaseFileError extends Error {
+  readonly rejection: CaseFileRejection;
+
+  constructor(rejection: CaseFileRejection) {
+    super(
+      `Refusing to approve this call: the case file behind it was rejected, so there is no ` +
+        `checkable evidence for the reply. Let the agent repair it and call again.\n` +
+        rejection.message,
+    );
+    this.name = 'ApprovalOnRejectedCaseFileError';
+    this.rejection = rejection;
+  }
+}
+
+export function rejectionReason(error: CaseFileRejection): string {
+  if (error instanceof MissingCaseFileError) {
+    return (
+      `Your case file could not be read at ${DEFAULT_CASE_FILE_PATH}. Write it there, ` +
+      `announce it in a fenced sandbox_artifacts block, and call add_issue_comment again.`
+    );
+  }
+  return (
+    `Your case file was rejected by the schema, so no human has seen this reply yet. ` +
+    `Fix ${error.path} and call add_issue_comment again.\n` +
+    error.problems.map((p) => `- ${p}`).join('\n')
+  );
 }
 
 export class TriageRunner {
   private readonly client: TrueForge;
   private readonly index = new EventIndex();
-  private casefilePath: string | null = null;
+  private readonly sessions = new Map<string, SessionState>();
 
   private readonly options: RunnerOptions;
 
   constructor(options: RunnerOptions) {
     this.options = options;
     this.client = new TrueForge({ baseUrl: options.baseUrl, token: options.token });
+  }
+
+  private stateFor(sessionId: string): SessionState {
+    let state = this.sessions.get(sessionId);
+    if (!state) {
+      state = { casefilePath: null, rejection: null };
+      this.sessions.set(sessionId, state);
+    }
+    return state;
   }
 
   async auditApprovalPolicy(): Promise<PolicyReport> {
@@ -89,6 +134,11 @@ export class TriageRunner {
     decisions: readonly PendingDecision[],
     emit: TriageEventSink,
   ): Promise<TurnOutcome> {
+    const outstanding = this.stateFor(sessionId).rejection;
+    if (outstanding && decisions.some((d) => d.status === 'allow')) {
+      throw new ApprovalOnRejectedCaseFileError(outstanding);
+    }
+
     for (const d of decisions) {
       await emit({
         type: 'gate.resolved',
@@ -120,10 +170,12 @@ export class TriageRunner {
     stream: AsyncIterable<unknown>,
     emit: TriageEventSink,
   ): Promise<TurnOutcome> {
+    const session = this.stateFor(sessionId);
     let turnId = knownTurnId ?? '';
     let pending: PendingCall[] = [];
     let finalText: string | null = null;
     let casefile: CaseFile | null = null;
+    let casefileError: CaseFileRejection | null = null;
 
     for await (const raw of stream) {
       const event = raw as { type: string } & Record<string, unknown>;
@@ -167,7 +219,7 @@ export class TriageRunner {
             for (const artifact of artifacts) {
               await emit({ type: 'artifact.available', ...artifact });
             }
-            this.casefilePath = findCaseFilePath(artifacts) ?? this.casefilePath;
+            session.casefilePath = findCaseFilePath(artifacts) ?? session.casefilePath;
           }
 
           for (const call of (event['toolCalls'] as ToolCallish[] | undefined) ?? []) {
@@ -221,14 +273,22 @@ export class TriageRunner {
             });
           }
 
-          const path = this.casefilePath ?? (paused ? DEFAULT_CASE_FILE_PATH : null);
+          const path = session.casefilePath ?? (paused ? DEFAULT_CASE_FILE_PATH : null);
 
           if (path) {
-            casefile = await this.pullCaseFile(sessionId, turnId, path).catch((error: unknown) => {
-              if (error instanceof CaseFileInvalidError || !paused) throw error;
-              throw new MissingCaseFileError(turnId);
-            });
-            await emit({ type: 'casefile.ready', casefile, path });
+            try {
+              casefile = await this.pullCaseFile(sessionId, turnId, path);
+              session.rejection = null;
+              await emit({ type: 'casefile.ready', casefile, path });
+            } catch (error) {
+              if (!paused) throw error;
+              casefileError =
+                error instanceof CaseFileInvalidError
+                  ? error
+                  : new MissingCaseFileError(turnId);
+              session.rejection = casefileError;
+              await emit({ type: 'casefile.rejected', reason: rejectionReason(casefileError) });
+            }
           }
 
           await emit({ type: 'turn.finished', turnId, paused });
@@ -237,7 +297,7 @@ export class TriageRunner {
       }
     }
 
-    return { turnId, pending, casefile, finalText };
+    return { turnId, pending, casefile, casefileError: casefileError ?? session.rejection, finalText };
   }
 
   private async backfillIndex(sessionId: string, turnId: string): Promise<void> {

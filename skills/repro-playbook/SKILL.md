@@ -174,7 +174,10 @@ first bad version.
 just its summary — so **do not go to step 8 without it.**
 
 `references/casefile.example.json` is the authority on the shape — **read it if
-any field below is unclear, and copy its key names exactly.** A key the schema
+any field below is unclear, and copy its key names exactly.** It contains every
+key the schema defines and nothing else, so anything you add beyond it is
+silently dropped. Observed evidence and inference never share a field, and
+there is no `confidence` key: it is derived from your evidence on the far side. A key the schema
 does not know is rejected at the boundary and the whole run fails, so this is
 not a place to improvise names.
 
@@ -246,9 +249,24 @@ So: do not ask whether you should post. Do not describe what you would say and
 wait. Do not end your turn with a draft in prose — a draft that is not passed
 to the tool never reaches a human, and the issue goes unanswered.
 
-If the human denies, they must give a reason. Incorporate it, record the denial
-and the previous draft in `revisions[]`, and call `add_issue_comment` again with
-the revised body.
+If the human denies, they must give a reason. Incorporate it, append an entry to
+the case file's `revisions[]`, and call `add_issue_comment` again with the
+revised body.
+
+**Every `revisions[]` entry needs all three fields**, or the case file is
+rejected and your revised reply never reaches anyone:
+
+```json
+{
+  "deniedReason": "<what the human said, verbatim>",
+  "revisedAt": "<ISO-8601 timestamp, e.g. 2026-08-30T16:20:00Z>",
+  "previousDraft": "<the exact body you sent last time>"
+}
+```
+
+A denial is also the one case where you rewrite the case file *after* writing
+it. Update `draftReply` to the new body at the same time, so the file and the
+reply do not disagree.
 
 > The one thing you decide is *what to say*. The one thing you never decide is
 > *whether it goes out*. Calling the tool is how you hand that second decision
