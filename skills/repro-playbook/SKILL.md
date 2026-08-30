@@ -174,7 +174,10 @@ first bad version.
 just its summary — so **do not go to step 8 without it.**
 
 `references/casefile.example.json` is the authority on the shape — **read it if
-any field below is unclear, and copy its key names exactly.** A key the schema
+any field below is unclear, and copy its key names exactly.** It contains every
+key the schema defines and nothing else, so anything you add beyond it is
+silently dropped. Observed evidence and inference never share a field, and
+there is no `confidence` key: it is derived from your evidence on the far side. A key the schema
 does not know is rejected at the boundary and the whole run fails, so this is
 not a place to improvise names.
 
