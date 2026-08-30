@@ -79,12 +79,26 @@ function render(event: TriageEvent): void {
   }
 }
 
+/**
+ * One interface for the whole run, not one per gate.
+ *
+ * `readline.close()` closes the underlying stdin, so a second gate — which is
+ * exactly what the deny→revise loop produces — found stdin already gone and
+ * the process exited mid-loop. Observed live 2026-08-30: the revision was
+ * correct and never got asked about.
+ */
+let prompt: ReturnType<typeof createInterface> | null = null;
+function operatorPrompt(): ReturnType<typeof createInterface> {
+  prompt ??= createInterface({ input: stdin, output: stdout });
+  return prompt;
+}
+
 /** The gate, at a terminal. Deny requires a reason here too — same rule. */
 async function askOperator(calls: PendingCall[]): Promise<PendingDecision[]> {
-  const rl = createInterface({ input: stdin, output: stdout });
+  const rl = operatorPrompt();
   const decisions: PendingDecision[] = [];
 
-  try {
+  {
     for (const call of calls) {
       console.log(`\n${c.amber('⏸  APPROVAL REQUIRED')}`);
       console.log(`   ${c.bold(call.toolName)} ${c.dim(`on ${call.serverName ?? 'local'}`)}`);
@@ -109,8 +123,6 @@ async function askOperator(calls: PendingCall[]): Promise<PendingDecision[]> {
       }
       decisions.push({ toolCallId: call.toolCallId, threadId: call.threadId, status: 'deny', reason });
     }
-  } finally {
-    rl.close();
   }
 
   return decisions;
@@ -177,6 +189,7 @@ async function main(): Promise<void> {
   });
 
   console.log(outcome.casefile ? c.green('\n✓ case file validated and stored') : c.dim('\nno case file this run'));
+  prompt?.close();
 }
 
 main().catch((error: unknown) => {
