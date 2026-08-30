@@ -663,15 +663,19 @@ silently wrong on the branch nobody walks.
   what the harness is doing for us.
 - **The store is a JSON file** with an atomic write. Deliberate, not an oversight: TrueForge's
   session is the source of truth, and anything lost is recoverable by re-reading it.
-- **Model availability, not model capability, was the binding constraint**, and by the end of
-  the build all four registered models were blocked in different ways:
-  `openrouter/glm-5-3-flash` completes the whole playbook well but throttles to roughly one
-  call a minute after sustained use; both Gemini 3.x models hit TrueForge's
-  `thought_signature` bug and stop dead after exactly one tool call (`status: null`,
-  `error: null`, no timeout — see [SETUP.md](SETUP.md)); `openrouter/gpt-5-nano` stalls
-  partway through. The verified runs are GLM's. Notably, the OpenRouter SSE stream once blamed
-  for an `Unexpected end of JSON input` parses cleanly on v0.1.4 — that was never TrueForge's
-  problem.
+- **A long triage gets dramatically slower, and we have not root-caused it.** The same run took
+  2–3 minutes early in the build and 30–50 minutes by the end. The obvious suspect — the model
+  provider rate-limiting us — is **wrong**: probed directly with a trivial request,
+  `openrouter/glm-5-3-flash` answers in 5.8s and `openrouter/gpt-5-nano` in 1.6s. Whatever it
+  is lives in the long run itself, most likely context growth across 90+ events and four
+  subagents. It is named here as an open problem rather than explained with a cause nobody
+  measured — which is the mistake this project exists to prevent, and one we made before
+  catching it.
+- **Two of the four registered models are unusable.** Both Gemini 3.x models hit TrueForge's
+  `thought_signature` bug and stop dead after one tool call (see [SETUP.md](SETUP.md)); a
+  trivial probe errors in 0.6s. The verified runs are GLM's. Notably, the OpenRouter SSE stream
+  once blamed for an `Unexpected end of JSON input` parses cleanly on v0.1.4 — that was never
+  TrueForge's problem either.
 - **The revision path took three attempts to get right.** After a denial the agent must append
   a `revisions[]` entry with `deniedReason`, `revisedAt` and `previousDraft`. A live run got as
   far as the revision and the schema rejected it — the skill named two of the three fields, and
@@ -707,8 +711,9 @@ agreeing.
 **Two of the four are verified against a live run; two are not.** The issues were written to
 produce those verdicts, but writing an issue is not evidence about the agent, and this README
 does not get to claim otherwise. `node scripts/verdict-matrix.ts 3,4` runs them and posts
-nothing — it leaves every gate unresolved. The runs were started and abandoned when the model
-provider's rate limit made them impractical, which is recorded here rather than papered over.
+nothing — it leaves every gate unresolved. The runs were started and abandoned because a long
+triage slowed to a crawl late in the day; the cause is recorded below and is **not** the model
+API, which answers in seconds when probed directly.
 
 Any public repository works. Nothing needs to be installed on the target.
 
