@@ -604,8 +604,8 @@ non-remote sandbox.
 
 ## Qodo Code Review Evidence
 
-Every substantive change after the first live run went through a pull request. **All seven are
-merged, each green on CI** — typecheck plus the test suite.
+Every substantive change after the first live run went through a pull request. **Thirteen PRs,
+each green on CI** — typecheck plus the test suite. Nothing was committed straight to `main`.
 
 | PR | Title | Review outcome |
 |:--|:--|:--|
@@ -617,6 +617,11 @@ merged, each green on CI** — typecheck plus the test suite.
 | [#6](https://github.com/ansu555/confirm-deny/pull/6) | Give the agent a budget and a stopping rule | **1 Correctness finding — fixed, re-reviewed clean** |
 | [#7](https://github.com/ansu555/confirm-deny/pull/7) | Fix the case-file skeleton to match the schema | **3 findings, in a chain — fixed, re-reviewed clean** |
 | [#8](https://github.com/ansu555/confirm-deny/pull/8) | Professional README, and enforce the safety properties it claims | **14 findings across three rounds — all fixed** |
+| [#9](https://github.com/ansu555/confirm-deny/pull/9) | Make the agent read its skill, and let the schema teach it | **6 findings — all real, all fixed** |
+| [#10](https://github.com/ansu555/confirm-deny/pull/10) | Verify the whole arc end to end | — |
+| [#11](https://github.com/ansu555/confirm-deny/pull/11) | Say which seeded verdicts are verified and which are not | — |
+| [#12](https://github.com/ansu555/confirm-deny/pull/12) | Retract the rate-limit claim: it was never measured | — |
+| [#13](https://github.com/ansu555/confirm-deny/pull/13) | Read the `.env` we tell people to write | 0 findings |
 
 ### What the review actually caught
 
@@ -634,6 +639,14 @@ anti-fabrication agent.** Then the review caught the fix introducing a schema co
 
 Three real defects, in a chain, in the exact place the project claims to be most careful. That
 is a better argument for code review than any clean run.
+
+**PR #9 — [High] Approval accepted on a rejected case file.** `resolveGate` would let a caller
+approve a tool call whose case file the schema had already refused, so the guarantee held only
+for callers who checked first — and our own end-to-end driver was one that did not. The gate now
+refuses the approval itself. Five more in the same round were the same shape: state that is
+correct on the happy path and silently wrong on the branch nobody walks — a rejection that
+vanished after a repair turn, and rejection state living on the runner rather than per session,
+so it leaked between sessions.
 
 **PR #8 — the README's own claims.** Reviewing the rewrite turned up the same defect twice:
 the document asserted two safety properties the code did not implement. It said reporter code
