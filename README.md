@@ -606,6 +606,7 @@ merged, each green on CI** — typecheck plus the test suite.
 | [#5](https://github.com/ansu555/confirm-deny/pull/5) | Name both causes of a cancelled turn | — |
 | [#6](https://github.com/ansu555/confirm-deny/pull/6) | Give the agent a budget and a stopping rule | **1 Correctness finding — fixed, re-reviewed clean** |
 | [#7](https://github.com/ansu555/confirm-deny/pull/7) | Fix the case-file skeleton to match the schema | **3 findings, in a chain — fixed, re-reviewed clean** |
+| [#8](https://github.com/ansu555/confirm-deny/pull/8) | Professional README, and enforce the safety properties it claims | **14 findings across three rounds — all fixed** |
 
 ### What the review actually caught
 
@@ -623,6 +624,20 @@ anti-fabrication agent.** Then the review caught the fix introducing a schema co
 
 Three real defects, in a chain, in the exact place the project claims to be most careful. That
 is a better argument for code review than any clean run.
+
+**PR #8 — the README's own claims.** Reviewing the rewrite turned up the same defect twice:
+the document asserted two safety properties the code did not implement. It said reporter code
+never runs on the maintainer's machine, while the runner accepted any sandbox id it was handed.
+It said an unsupported case file is rejected rather than published, while validation ran only
+*after* an approved comment had already posted. We had written the sandbox hazard down and told
+the operator to check it by eye — **a documented hazard is not a control.** Both were fixed in
+code rather than softened in prose.
+
+A second round found six more, two of them structural: rejection state lived on the runner
+rather than per session, so it could refuse a valid approval because an unrelated earlier
+session had failed; and an unrepaired rejection vanished between turns, letting the CLI mark a
+failed run `done`. Both are the same shape — state that is right on the happy path and
+silently wrong on the branch nobody walks.
 
 > Stated plainly, because the project's own honesty rule applies to its own README: **the trail
 > is real but thin.** The build spent its first day standing the harness up, and the pull
