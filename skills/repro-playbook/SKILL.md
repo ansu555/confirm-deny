@@ -173,15 +173,23 @@ first bad version.
 `/work/case/casefile.json`. This is the deliverable — the reply in step 8 is
 just its summary — so **do not go to step 8 without it.**
 
-The full shape is in `references/casefile.example.json`. The required skeleton,
-so you do not have to read that file to get this right:
+`references/casefile.example.json` is the authority on the shape — **read it if
+any field below is unclear, and copy its key names exactly.** A key the schema
+does not know is rejected at the boundary and the whole run fails, so this is
+not a place to improvise names.
+
+The skeleton, so the common case needs no second file read:
 
 ```json
 {
   "issue": { "url": "...", "number": 1, "repo": "owner/name", "title": "..." },
   "verdict": "REPRODUCED",
   "evidence": {
-    "environment": { "os": "...", "python": "...", "packages": {} },
+    "environment": {
+      "os": "Linux 6.8.0 x86_64",
+      "runtime": "Python 3.12.4",
+      "packageVersions": { "colwrap": "2.4.0" }
+    },
     "reproScript": { "path": "/work/case/repro.py", "contents": "..." },
     "command": "python /work/case/repro.py",
     "exitCode": 1,
