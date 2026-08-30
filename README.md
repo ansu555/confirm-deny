@@ -604,8 +604,10 @@ non-remote sandbox.
 
 ## Qodo Code Review Evidence
 
-Every substantive change after the first live run went through a pull request. **Thirteen PRs,
-each green on CI** — typecheck plus the test suite. Nothing was committed straight to `main`.
+Every substantive change after the first live run went through a pull request, **each green on
+CI** — typecheck plus the test suite. **Nothing was committed straight to `main`.** The table
+below lists the PRs that changed behaviour; documentation-only follow-ups are not listed but are
+visible in the [PR history](https://github.com/ansu555/confirm-deny/pulls?q=is%3Apr+is%3Amerged).
 
 | PR | Title | Review outcome |
 |:--|:--|:--|
