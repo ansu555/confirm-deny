@@ -13,6 +13,7 @@ GITHUB_MCP_SERVER='github'
   INDENTED = spaced
 TRUEFORGE_ALT=abc # a trailing note
 QUOTED_HASH="pass#word"
+QUOTED_THEN_COMMENT="keep me" # and drop this
 URL=https://example.test/api#fragment
 NOT_A_PAIR
 =NO_KEY
@@ -38,6 +39,10 @@ describe('parseDotEnv', () => {
 
   it('drops an inline comment from an unquoted value', () => {
     expect(parsed['TRUEFORGE_ALT']).toBe('abc');
+  });
+
+  it('drops a comment that follows a quoted value, and the quotes with it', () => {
+    expect(parsed['QUOTED_THEN_COMMENT']).toBe('keep me');
   });
 
   it('keeps a hash that is part of the value', () => {

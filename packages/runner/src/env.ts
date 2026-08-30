@@ -1,14 +1,16 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-const isQuoted = (value: string): boolean =>
-  value.length >= 2 &&
-  ((value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'")));
+const QUOTED = /^(["'])([^]*?)\1/;
 
 const stripComment = (value: string): string => {
   const comment = /\s+#/.exec(value);
   return comment ? value.slice(0, comment.index).trimEnd() : value;
+};
+
+const readValue = (raw: string): string => {
+  const quoted = QUOTED.exec(raw);
+  return quoted ? (quoted[2] ?? '') : stripComment(raw);
 };
 
 export function parseDotEnv(text: string): Record<string, string> {
@@ -19,7 +21,7 @@ export function parseDotEnv(text: string): Record<string, string> {
     const eq = trimmed.indexOf('=');
     if (eq <= 0) continue;
     const raw = trimmed.slice(eq + 1).trim();
-    out[trimmed.slice(0, eq).trim()] = isQuoted(raw) ? raw.slice(1, -1) : stripComment(raw);
+    out[trimmed.slice(0, eq).trim()] = readValue(raw);
   }
   return out;
 }
