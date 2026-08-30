@@ -260,7 +260,8 @@ validation from evidence, unverified-claim count, and bisect depth.
 ### Verdicts are invariants, not labels
 
 Each verdict carries a rule the schema **enforces**. A case file whose verdict its own evidence
-cannot support is rejected, and the run fails loudly rather than publishing.
+cannot support is rejected — handed back to the agent to repair, and failing the run if it
+cannot. Nothing is published either way.
 
 | | Verdict | The schema requires |
 |:--|:--|:--|
