@@ -30,7 +30,11 @@ export interface CaseRecord {
 }
 
 export class CaseStore {
-  constructor(private readonly file: string) {}
+  private readonly file: string;
+
+  constructor(file: string) {
+    this.file = file;
+  }
 
   static default(): CaseStore {
     return new CaseStore(join(process.cwd(), 'store', 'cases.json'));

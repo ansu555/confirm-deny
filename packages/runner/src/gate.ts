@@ -15,24 +15,32 @@ import type { TrueForgeApi } from '@truefoundry/trueforge-sdk';
 
 /** Raised when a deny arrives without a reason. See `PendingDecision`. */
 export class DenyReasonRequiredError extends Error {
-  constructor(public readonly toolCallId: string) {
+  readonly toolCallId: string;
+
+  constructor(toolCallId: string) {
     super(
       `Deny requires a reason (tool call ${toolCallId}). The harness treats reason as ` +
         `optional; we do not. A gate that accepts a bare "no" teaches the agent nothing ` +
         `and teaches the operator to click.`,
     );
     this.name = 'DenyReasonRequiredError';
+    this.toolCallId = toolCallId;
   }
 }
 
 /** Raised when a pending call cannot be traced back to the message that made it. */
 export class UnresolvedToolCallError extends Error {
-  constructor(public readonly toolCallId: string, public readonly sourceEventId: string) {
+  readonly toolCallId: string;
+  readonly sourceEventId: string;
+
+  constructor(toolCallId: string, sourceEventId: string) {
     super(
       `Cannot resolve tool call ${toolCallId} — no model.message with id ${sourceEventId} in the ` +
         `event index. Refusing to present an approval whose arguments we cannot show verbatim.`,
     );
     this.name = 'UnresolvedToolCallError';
+    this.toolCallId = toolCallId;
+    this.sourceEventId = sourceEventId;
   }
 }
 

@@ -53,16 +53,19 @@ export function findCaseFilePath(artifacts: readonly SandboxArtifact[]): string 
 }
 
 export class CaseFileInvalidError extends Error {
-  constructor(
-    public readonly path: string,
-    public readonly problems: string[],
-    public readonly raw: string,
-  ) {
+  readonly path: string;
+  readonly problems: string[];
+  readonly raw: string;
+
+  constructor(path: string, problems: string[], raw: string) {
     super(
       `The case file at ${path} did not satisfy the contract:\n` +
         problems.map((p) => `  · ${p}`).join('\n'),
     );
     this.name = 'CaseFileInvalidError';
+    this.path = path;
+    this.problems = problems;
+    this.raw = raw;
   }
 }
 

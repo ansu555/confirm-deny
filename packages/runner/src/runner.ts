@@ -43,7 +43,10 @@ export class TriageRunner {
   private readonly client: TrueForge;
   private readonly index = new EventIndex();
 
-  constructor(private readonly options: RunnerOptions) {
+  private readonly options: RunnerOptions;
+
+  constructor(options: RunnerOptions) {
+    this.options = options;
     this.client = new TrueForge({ baseUrl: options.baseUrl, token: options.token });
   }
 

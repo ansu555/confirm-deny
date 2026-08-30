@@ -97,7 +97,9 @@ export function auditPolicy(
 }
 
 export class UngatedWritePathError extends Error {
-  constructor(public readonly report: PolicyReport) {
+  readonly report: PolicyReport;
+
+  constructor(report: PolicyReport) {
     super(
       `Refusing to run: the approval policy leaves a write path ungated.\n` +
         `  ungated writes : ${report.ungatedWrites.join(', ') || '(none)'}\n` +
@@ -106,6 +108,7 @@ export class UngatedWritePathError extends Error {
         `A literal that matches nothing gates nothing, and does so silently.`,
     );
     this.name = 'UngatedWritePathError';
+    this.report = report;
   }
 }
 

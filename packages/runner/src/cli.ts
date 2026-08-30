@@ -119,6 +119,13 @@ async function askOperator(calls: PendingCall[]): Promise<PendingDecision[]> {
 async function main(): Promise<void> {
   const [command, argument] = process.argv.slice(2);
 
+  // Usage before credentials: a stranger running this for the first time should
+  // learn what it does, not what they forgot to export.
+  if (command !== 'preflight' && (command !== 'triage' || !argument)) {
+    console.log('usage:\n  confirm-deny preflight\n  confirm-deny triage <github issue url>');
+    process.exit(command ? 2 : 0);
+  }
+
   const runner = new TriageRunner({
     baseUrl: env('TRUEFORGE_BASE_URL', 'http://localhost:3000'),
     token: env('TRUEFORGE_TOKEN'),
@@ -134,11 +141,6 @@ async function main(): Promise<void> {
       console.log(c.amber(`  ⚠ literals matching nothing: ${report.deadLiterals.join(', ')}`));
     }
     return;
-  }
-
-  if (command !== 'triage' || !argument) {
-    console.log('usage:\n  confirm-deny preflight\n  confirm-deny triage <github issue url>');
-    process.exit(2);
   }
 
   // Preflight is not optional. A demo where the gate silently does not fire is
