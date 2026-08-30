@@ -196,6 +196,16 @@ export class TriageRunner {
           const state = event['state'] as Parameters<typeof pausedApprovals>[0];
           const paused = pausedApprovals(state).length > 0;
 
+          if (state.status !== 'done') {
+            await emit({
+              type: 'failed',
+              message:
+                `Turn ended as "${state.status}" rather than done. A cancelled turn usually ` +
+                `means the iteration limit was reached before the agent finished; raise ` +
+                `CONFIRM_DENY_ITERATION_LIMIT.`,
+            });
+          }
+
           if (!paused && this.casefilePath) {
             const path = this.casefilePath;
             casefile = await this.pullCaseFile(sessionId, turnId, path);
