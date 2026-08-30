@@ -13,7 +13,7 @@ It turns an unverified issue into a **schema-validated case file** — or a defe
 <br/>
 
 [![CI](https://github.com/ansu555/confirm-deny/actions/workflows/ci.yml/badge.svg)](https://github.com/ansu555/confirm-deny/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-57%20passing-3fb950?style=flat-square)](#tests)
+[![Tests](https://img.shields.io/badge/tests-64%20passing-3fb950?style=flat-square)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522.14-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![Built on TrueForge](https://img.shields.io/badge/built%20on-TrueForge-6e56cf?style=flat-square)](https://github.com/truefoundry/trueforge)
@@ -391,6 +391,11 @@ GITHUB_MCP_SERVER=github
 CONFIRM_DENY_ITERATION_LIMIT=200
 ```
 
+Every entry point reads `.env` on start. Anything already exported wins over the
+file, so inline overrides and CI keep working. The first line of output is the
+server and model actually resolved — a stale `.env` shows up there instead of
+becoming a mystery ten minutes into a run.
+
 > [!TIP]
 > On some networks Node resolves the gateway over IPv6 and hangs.
 > Prefix with `NODE_OPTIONS=--dns-result-order=ipv4first`.
@@ -452,7 +457,7 @@ check is one line, and it is the difference between a documented hazard and an e
 | `register-agent.ts` | Publish the agent to TrueForge so the stock chat UI can run it. |
 | `scripts/e2e.ts` | Drive the full arc programmatically against a live stack, including a denial and a revision. |
 | `scripts/verdict-matrix.ts` | Triage all four seeded issues and check each verdict; posts nothing. |
-| `pnpm test` | 57 tests. |
+| `pnpm test` | 64 tests. |
 | `pnpm typecheck` | Project-wide `tsc -b`. |
 
 ---
@@ -502,7 +507,7 @@ Every feature is here because **removing it makes the job impossible** — not t
 ## Tests
 
 ```bash
-pnpm test        # 57 passing
+pnpm test        # 64 passing
 ```
 
 The one worth pointing at is the **gate regression test**: a fixture of a paused turn asserting
