@@ -46,6 +46,9 @@ git clone --quiet <public repo url> repo
 cd repo && git checkout <reported version tag>
 ```
 
+Version tags usually carry a `v` prefix (`v2.4.0`, not `2.4.0`). If checkout
+fails, `git tag --list` and use the real name.
+
 **Public repositories only.** If the report points at anything requiring
 credentials, refuse and record why. You have no credentials and you must never
 acquire any — see Safety below.
@@ -55,6 +58,29 @@ Record the real environment; do not assume it:
 ```bash
 uname -srm; python3 --version; python3 -m pip list --format=freeze
 ```
+
+#### Prove you are running the code you think you are
+
+Non-negotiable, and the most common way a repro silently lies. A `pip install`
+of the package, a leftover `build/` directory, or an installed copy on the
+default path will shadow your checkout — and the result you get back is then
+some *other* version's behaviour, reported as this one's.
+
+Run the source you checked out, explicitly:
+
+```bash
+cd /work/case/repo && PYTHONPATH=src python3 -c \
+  "import <pkg>; print(<pkg>.__file__); print(<pkg>.__version__)"
+```
+
+`__file__` **must** be inside `/work/case/repo`, and `__version__` **must**
+match the version you checked out. If either is wrong, fix the import path and
+run it again. Never `pip install` the package under test — that is what puts
+the wrong copy on the path in the first place.
+
+If you cannot make them match, the correct outcome is `NEEDS_INFO` with that
+stated as the reason. **A result from unverified code is not evidence**, and
+reporting one is the exact failure this whole procedure exists to prevent.
 
 ### 3. Write the smallest script that would exhibit the failure
 
