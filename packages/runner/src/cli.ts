@@ -121,10 +121,13 @@ async function main(): Promise<void> {
 
   // Usage before credentials: a stranger running this for the first time should
   // learn what it does, not what they forgot to export.
-  if (command !== 'preflight' && (command !== 'triage' || !argument)) {
+  const usage = (code: number): never => {
     console.log('usage:\n  confirm-deny preflight\n  confirm-deny triage <github issue url>');
-    process.exit(command ? 2 : 0);
-  }
+    process.exit(code);
+  };
+  if (!command) usage(0);
+  if (command !== 'preflight' && command !== 'triage') usage(2);
+  const issueUrl = command === 'triage' ? (argument ?? usage(2)) : '';
 
   const runner = new TriageRunner({
     baseUrl: env('TRUEFORGE_BASE_URL', 'http://localhost:3000'),
@@ -149,12 +152,12 @@ async function main(): Promise<void> {
   console.log(c.green(`✓ gate covers ${report.gated.length} tools`) + c.dim(' (preflight)'));
 
   const store = CaseStore.default();
-  const record = await store.upsert({ ...newCase(argument), status: 'running' });
+  const record = await store.upsert({ ...newCase(issueUrl), status: 'running' });
 
   const sessionId = await runner.startSession();
   await store.patch(record.id, { sessionId });
 
-  let outcome = await runner.triage(sessionId, argument, render);
+  let outcome = await runner.triage(sessionId, issueUrl, render);
 
   // Deny → revise → gate again. Bounded so a disagreeing agent cannot loop
   // forever at the operator's expense.
