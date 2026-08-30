@@ -201,6 +201,18 @@ nothing that matters here.
 ## Qodo Code Review Evidence
 
 - [PR #1 — Make the agent call the write tool so the approval gate can fire](https://github.com/ansu555/confirm-deny/pull/1)
+- [PR #2 — Add CI, and correct the README to match what the project actually does](https://github.com/ansu555/confirm-deny/pull/2)
+
+Both merged. Every substantive change after the first live run went through a
+pull request rather than straight to `main`, and PR #2 merged green on CI —
+typecheck plus the 41 tests.
+
+Stated plainly, because the project's own honesty rule applies to its own
+README: **the trail is real but thin.** The build spent its day standing the
+harness up, and the pull requests start from the point where the agent first
+ran end to end. Earlier commits went directly to `main` via an editor
+auto-committer, which is visible in the history and is not backdated or
+disguised here.
 
 ## Licence
 
