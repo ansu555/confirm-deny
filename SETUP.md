@@ -104,7 +104,13 @@ Measured across a replay of one tool call:
 |---|---|---|
 | `gemini-3.1-flash-lite` | **400** | OK |
 | `gemini-3.5-flash` | **400** | OK |
+| `gemini-3.6-flash` | **hangs** | OK |
 | `gemini-2.5-flash` | OK | OK |
+
+Re-confirmed on `gemini-3-6-flash` during a full triage: the agent read
+`SKILL.md`, the sandbox came up, and then the turn simply stopped — one tool
+call, four events, `status: null`, `error: null`, no timeout. It does not always
+surface as a 400; sometimes the turn just never advances.
 
 **The symptom to watch for:** the agent makes exactly **one** tool call, then the turn dies.
 Not a loop that degrades — a loop that stops at step two. That is a client bug, not a model or

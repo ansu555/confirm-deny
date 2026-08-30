@@ -1,5 +1,4 @@
 {
-  "_comment": "Shape reference. Observed evidence and inference never share a field. Do not include a `confidence` key \u2014 it is derived from your evidence on the far side.",
   "issue": {
     "repo": "owner/name",
     "number": 12,
