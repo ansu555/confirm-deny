@@ -8,6 +8,7 @@ import { UngatedWritePathError, HostExecutionError } from './policy.ts';
 import { CaseFileInvalidError, MissingCaseFileError } from './artifacts.ts';
 import type { PendingCall, PendingDecision } from './gate.ts';
 import type { TriageEvent } from './events.ts';
+import { loadDotEnv } from './env.ts';
 
 const REPAIR_LIMIT = 2;
 
@@ -168,6 +169,7 @@ function rejectedValues(error: CaseFileInvalidError): [string, string][] {
 }
 
 async function main(): Promise<void> {
+  const fromFile = loadDotEnv();
   const [command, argument] = process.argv.slice(2);
 
   const usage = (code: number): never => {
@@ -178,11 +180,19 @@ async function main(): Promise<void> {
   if (command !== 'preflight' && command !== 'triage') usage(2);
   const issueUrl = command === 'triage' ? (argument ?? usage(2)) : '';
 
+  const baseUrl = env('TRUEFORGE_BASE_URL', 'http://localhost:8790');
+  const model = env('CONFIRM_DENY_MODEL', 'openrouter/glm-5-3-flash');
+
+  console.log(
+    c.dim(
+      `  ${baseUrl} · ${model}${fromFile.length ? ` · ${fromFile.length} from .env` : ''}`,
+    ),
+  );
+
   const runner = new TriageRunner({
-    baseUrl: env('TRUEFORGE_BASE_URL', 'http://localhost:8790'),
- 
+    baseUrl,
     token: process.env['TRUEFORGE_TOKEN'] ?? '',
-    model: env('CONFIRM_DENY_MODEL', 'google-gemini/gemini-3-1-flash-lite'),
+    model,
     githubServerName: process.env['GITHUB_MCP_SERVER'] ?? 'github',
     ...(process.env['CONFIRM_DENY_SANDBOX_PREFIX']
       ? { sandboxPrefix: process.env['CONFIRM_DENY_SANDBOX_PREFIX'] }

@@ -1,5 +1,8 @@
 import { TriageRunner } from '../packages/runner/src/runner.ts';
 import type { TriageEvent } from '../packages/runner/src/events.ts';
+import { loadDotEnv } from '../packages/runner/src/env.ts';
+
+loadDotEnv();
 
 const ISSUE = process.argv[2] ?? 'https://github.com/ansu555/colwrap/issues/1';
 

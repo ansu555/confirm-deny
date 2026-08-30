@@ -1,5 +1,8 @@
 import { TriageRunner } from '../packages/runner/src/runner.ts';
 import type { TriageEvent } from '../packages/runner/src/events.ts';
+import { loadDotEnv } from '../packages/runner/src/env.ts';
+
+loadDotEnv();
 
 const EXPECTED: Record<string, string> = {
   '1': 'REPRODUCED',

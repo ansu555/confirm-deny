@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import { buildAgentSpec } from './agent-spec.ts';
+import { loadDotEnv } from './env.ts';
+
+loadDotEnv();
 
 const baseUrl = process.env['TRUEFORGE_BASE_URL'] ?? 'http://localhost:8790';
 const model = process.env['CONFIRM_DENY_MODEL'] ?? 'openrouter/glm-5-3-flash';

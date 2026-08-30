@@ -13,7 +13,7 @@ It turns an unverified issue into a **schema-validated case file** — or a defe
 <br/>
 
 [![CI](https://github.com/ansu555/confirm-deny/actions/workflows/ci.yml/badge.svg)](https://github.com/ansu555/confirm-deny/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-57%20passing-3fb950?style=flat-square)](#tests)
+[![Tests](https://img.shields.io/badge/tests-69%20passing-3fb950?style=flat-square)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522.14-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![Built on TrueForge](https://img.shields.io/badge/built%20on-TrueForge-6e56cf?style=flat-square)](https://github.com/truefoundry/trueforge)
@@ -391,6 +391,11 @@ GITHUB_MCP_SERVER=github
 CONFIRM_DENY_ITERATION_LIMIT=200
 ```
 
+Every entry point reads `.env` on start. Anything already exported wins over the
+file, so inline overrides and CI keep working. The first line of output is the
+server and model actually resolved — a stale `.env` shows up there instead of
+becoming a mystery ten minutes into a run.
+
 > [!TIP]
 > On some networks Node resolves the gateway over IPv6 and hangs.
 > Prefix with `NODE_OPTIONS=--dns-result-order=ipv4first`.
@@ -452,7 +457,7 @@ check is one line, and it is the difference between a documented hazard and an e
 | `register-agent.ts` | Publish the agent to TrueForge so the stock chat UI can run it. |
 | `scripts/e2e.ts` | Drive the full arc programmatically against a live stack, including a denial and a revision. |
 | `scripts/verdict-matrix.ts` | Triage all four seeded issues and check each verdict; posts nothing. |
-| `pnpm test` | 57 tests. |
+| `pnpm test` | 69 tests. |
 | `pnpm typecheck` | Project-wide `tsc -b`. |
 
 ---
@@ -502,7 +507,7 @@ Every feature is here because **removing it makes the job impossible** — not t
 ## Tests
 
 ```bash
-pnpm test        # 57 passing
+pnpm test        # 69 passing
 ```
 
 The one worth pointing at is the **gate regression test**: a fixture of a paused turn asserting
@@ -599,8 +604,8 @@ non-remote sandbox.
 
 ## Qodo Code Review Evidence
 
-Every substantive change after the first live run went through a pull request. **All seven are
-merged, each green on CI** — typecheck plus the test suite.
+Every substantive change after the first live run went through a pull request. **Thirteen PRs,
+each green on CI** — typecheck plus the test suite. Nothing was committed straight to `main`.
 
 | PR | Title | Review outcome |
 |:--|:--|:--|
@@ -612,6 +617,11 @@ merged, each green on CI** — typecheck plus the test suite.
 | [#6](https://github.com/ansu555/confirm-deny/pull/6) | Give the agent a budget and a stopping rule | **1 Correctness finding — fixed, re-reviewed clean** |
 | [#7](https://github.com/ansu555/confirm-deny/pull/7) | Fix the case-file skeleton to match the schema | **3 findings, in a chain — fixed, re-reviewed clean** |
 | [#8](https://github.com/ansu555/confirm-deny/pull/8) | Professional README, and enforce the safety properties it claims | **14 findings across three rounds — all fixed** |
+| [#9](https://github.com/ansu555/confirm-deny/pull/9) | Make the agent read its skill, and let the schema teach it | **6 findings — all real, all fixed** |
+| [#10](https://github.com/ansu555/confirm-deny/pull/10) | Verify the whole arc end to end | — |
+| [#11](https://github.com/ansu555/confirm-deny/pull/11) | Say which seeded verdicts are verified and which are not | — |
+| [#12](https://github.com/ansu555/confirm-deny/pull/12) | Retract the rate-limit claim: it was never measured | — |
+| [#13](https://github.com/ansu555/confirm-deny/pull/13) | Read the `.env` we tell people to write | **3 Correctness findings across two rounds — all fixed** |
 
 ### What the review actually caught
 
@@ -629,6 +639,22 @@ anti-fabrication agent.** Then the review caught the fix introducing a schema co
 
 Three real defects, in a chain, in the exact place the project claims to be most careful. That
 is a better argument for code review than any clean run.
+
+**PR #13 — [Correctness] The loader missed the file it was written to read.** The `.env` path
+resolved against `process.cwd()`, so running the CLI from `packages/runner` looked for
+`packages/runner/.env` and silently found nothing — the same class of failure the PR existed to
+fix, reintroduced one directory down. The second: an unquoted `TOKEN=abc # note` loaded the
+comment as part of the value, and the README's own setup block is written that way. The fix for
+*that* then missed `KEY="value" # note` — quoted, then commented — and kept the quotes. Three
+defects in a forty-line parser whose entire job is to not be surprising.
+
+**PR #9 — [High] Approval accepted on a rejected case file.** `resolveGate` would let a caller
+approve a tool call whose case file the schema had already refused, so the guarantee held only
+for callers who checked first — and our own end-to-end driver was one that did not. The gate now
+refuses the approval itself. Five more in the same round were the same shape: state that is
+correct on the happy path and silently wrong on the branch nobody walks — a rejection that
+vanished after a repair turn, and rejection state living on the runner rather than per session,
+so it leaked between sessions.
 
 **PR #8 — the README's own claims.** Reviewing the rewrite turned up the same defect twice:
 the document asserted two safety properties the code did not implement. It said reporter code
@@ -667,10 +693,12 @@ silently wrong on the branch nobody walks.
   2–3 minutes early in the build and 30–50 minutes by the end. The obvious suspect — the model
   provider rate-limiting us — is **wrong**: probed directly with a trivial request,
   `openrouter/glm-5-3-flash` answers in 5.8s and `openrouter/gpt-5-nano` in 1.6s. Whatever it
-  is lives in the long run itself, most likely context growth across 90+ events and four
-  subagents. It is named here as an open problem rather than explained with a cause nobody
-  measured — which is the mistake this project exists to prevent, and one we made before
-  catching it.
+  is lives in the long run itself. Two later runs came in at about ten minutes each — between
+  the two extremes, which narrows nothing. There is a candidate: the server log holds 47 Gemini
+  `429`s carrying a 56-second backoff, and a stale `.env` was selecting a Gemini model (see
+  PR #13). We do not know how the slow runs were launched, so that stays a hypothesis. It is
+  named here as an open problem rather than explained with a cause nobody measured — which is
+  the mistake this project exists to prevent, and one we made once already before catching it.
 - **Two of the four registered models are unusable.** Both Gemini 3.x models hit TrueForge's
   `thought_signature` bug and stop dead after one tool call (see [SETUP.md](SETUP.md)); a
   trivial probe errors in 0.6s. The verified runs are GLM's. Notably, the OpenRouter SSE stream
@@ -705,15 +733,26 @@ agreeing.
 |:--|:--|:--|:--|
 | [#1](https://github.com/ansu555/colwrap/issues/1) | `✓ REPRODUCED` | **verified** | real bug — found *and* bisected to `v2.3.0` |
 | [#2](https://github.com/ansu555/colwrap/issues/2) | `○ CANNOT_REPRODUCE` | **verified** | reporter was on a version predating the bug |
-| [#3](https://github.com/ansu555/colwrap/issues/3) | `? NEEDS_INFO` | not yet run | no version, no steps, no reproducible claim |
-| [#4](https://github.com/ansu555/colwrap/issues/4) | `— NOT_A_BUG` | not yet run | documented behaviour, working as specified |
+| [#3](https://github.com/ansu555/colwrap/issues/3) | `? NEEDS_INFO` | **run — no verdict** | no version, no steps, no reproducible claim |
+| [#4](https://github.com/ansu555/colwrap/issues/4) | `— NOT_A_BUG` | **run — wrong verdict** | documented behaviour, working as specified |
 
-**Two of the four are verified against a live run; two are not.** The issues were written to
-produce those verdicts, but writing an issue is not evidence about the agent, and this README
-does not get to claim otherwise. `node scripts/verdict-matrix.ts 3,4` runs them and posts
-nothing — it leaves every gate unresolved. The runs were started and abandoned because a long
-triage slowed to a crawl late in the day; the cause is recorded below and is **not** the model
-API, which answers in seconds when probed directly.
+**Two of the four hold. Two do not, and here is exactly how they failed.**
+
+`node scripts/verdict-matrix.ts 3,4` ran both on the evening of Aug 30. It posts nothing — every
+gate is left unresolved by design.
+
+- **#3 produced no case file.** The turn ended `cancelled` with no error, which in TrueForge means
+  the iteration limit or a `context_length` smaller than the model's real window. An issue with
+  nothing to reproduce should be the *cheapest* triage in the set; instead the agent spent the
+  whole budget looking for something that was never there. The stopping rule works for a
+  reproduction that fails. It does not yet work for a report with nothing in it.
+- **#4 returned `REPRODUCED` where `NOT_A_BUG` was expected**, with six unverified claims listed
+  and confidence derived as `low`. The gate held and nothing was published — but a wrong verdict
+  that stops at a human is still a wrong verdict.
+
+Both are honest failures of the *judgement*, not of the safety machinery: in each case the gate
+behaved exactly as designed. The four-verdict matrix is a claim this project has not earned, and
+the demo shows one issue end to end instead.
 
 Any public repository works. Nothing needs to be installed on the target.
 
@@ -723,7 +762,7 @@ Any public repository works. Nothing needs to be installed on the target.
 
 ## License
 
-MIT
+[MIT](LICENSE).
 
 <br/>
 
